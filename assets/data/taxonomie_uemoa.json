@@ -1,0 +1,36 @@
+{
+  "version": "1.0",
+  "source": "AMF-UEMOA",
+  "criteres": [
+    {
+      "id": "energie_renouvelable",
+      "label": "Énergie renouvelable",
+      "description": "Production d'énergie solaire, éolienne, hydraulique",
+      "score_max": 25
+    },
+    {
+      "id": "agriculture_durable",
+      "label": "Agriculture durable",
+      "description": "Pratiques agricoles respectueuses du climat",
+      "score_max": 20
+    },
+    {
+      "id": "transport_propre",
+      "label": "Transport propre",
+      "description": "Véhicules électriques, mobilité douce",
+      "score_max": 20
+    },
+    {
+      "id": "gestion_dechets",
+      "label": "Gestion des déchets",
+      "description": "Recyclage, économie circulaire",
+      "score_max": 20
+    },
+    {
+      "id": "batiment_vert",
+      "label": "Bâtiment vert",
+      "description": "Construction durable, efficacité énergétique",
+      "score_max": 15
+    }
+  ]
+}

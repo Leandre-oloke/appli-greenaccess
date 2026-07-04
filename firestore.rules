@@ -1,0 +1,128 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ─────────────────────────────────────────────────────────────
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isAuth() && request.auth.uid == uid;
+    }
+
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isAdmin() {
+      return isAuth() && getUserRole() == 'admin';
+    }
+
+    function isPartenaireFinanceur() {
+      return isAuth() && (getUserRole() == 'partenaireFinanceur' || isAdmin());
+    }
+
+    function isPartenaireAssureur() {
+      return isAuth() && (getUserRole() == 'partenaireAssureur' || isAdmin());
+    }
+
+    // ── Users ────────────────────────────────────────────────────────────────
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) && !('role' in request.resource.data.diff(resource.data).affectedKeys())
+                    || isAdmin();
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    // ── User progress ────────────────────────────────────────────────────────
+    match /users/{userId}/progress/{courseId} {
+      allow read, write: if isOwner(userId) || isAdmin();
+    }
+
+    // ── Badges ───────────────────────────────────────────────────────────────
+    match /users/{userId}/badges/{badgeId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId) || isAdmin();
+    }
+
+    // ── Notifications personnelles (contrat, etc.) ────────────────────────────
+    match /users/{userId}/notifications/{notifId} {
+      allow read: if isOwner(userId);
+      allow write: if isAdmin();
+    }
+
+    // ── Notifications ────────────────────────────────────────────────────────
+    match /notifications/{notificationId} {
+      allow read: if isAuth();
+      allow create, delete: if isAdmin();
+    }
+
+    // ── Courses ──────────────────────────────────────────────────────────────
+    match /courses/{courseId} {
+      allow read: if isAuth();
+      allow write: if isAdmin();
+
+      // ── Leçons (sous-collection) ─────────────────────────────────────────
+      match /lecons/{leconId} {
+        allow read: if isAuth();
+        allow write: if isAdmin();
+      }
+
+      // ── Quiz (sous-collection) ───────────────────────────────────────────
+      match /quiz/{quizId} {
+        allow read: if isAuth();
+        allow write: if isAdmin();
+      }
+    }
+
+    // ── Scores Climat ────────────────────────────────────────────────────────
+    match /scores_climat/{scoreId} {
+      // isPartenaireFinanceur() EN PREMIER — pas de dépendance à resource.data
+      allow read: if isPartenaireFinanceur() || (isAuth() && resource.data.userId == request.auth.uid);
+      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── Demandes de financement ───────────────────────────────────────────────
+    match /demandes_financement/{demandeId} {
+      // isPartenaireFinanceur() EN PREMIER — pas de dépendance à resource.data
+      allow read: if isPartenaireFinanceur() || (isAuth() && resource.data.userId == request.auth.uid);
+      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
+      allow update: if isPartenaireFinanceur()
+                    || (isOwner(resource.data.userId) && resource.data.statut == 'brouillon');
+      allow delete: if isAdmin();
+    }
+
+    // ── Produits assurance ────────────────────────────────────────────────────
+    match /produits_assurance/{produitId} {
+      allow read: if isAuth();
+      allow write: if isAdmin();
+    }
+
+    // ── Contrats assurance ────────────────────────────────────────────────────
+    match /contrats_assurance/{contratId} {
+      // isPartenaireAssureur() EN PREMIER — pas de dépendance à resource.data
+      // Firestore évalue l'OR de gauche à droite ; mettre la condition sans
+      // resource.data en premier permet les requêtes admin sans clause where.
+      allow read: if isPartenaireAssureur() || (isAuth() && resource.data.userId == request.auth.uid);
+      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
+      allow update: if isPartenaireAssureur();
+      allow delete: if isAdmin();
+    }
+
+    // ── Zones aléas ───────────────────────────────────────────────────────────
+    match /zones_alea/{zoneId} {
+      allow read: if isAuth();
+      allow write: if isAdmin();
+    }
+
+    // ── Partenaires ───────────────────────────────────────────────────────────
+    match /partenaires/{partenaireId} {
+      allow read: if isAuth();
+      allow write: if isAdmin();
+    }
+  }
+}

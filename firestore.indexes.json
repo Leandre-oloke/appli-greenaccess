@@ -1,0 +1,29 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "scores_climat",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "dateCalcul", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "demandes_financement",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "date_soumission", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "contrats_assurance",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "date_debut", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
