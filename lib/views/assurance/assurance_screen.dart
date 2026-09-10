@@ -46,7 +46,7 @@ class _AssuranceScreenState extends ConsumerState<AssuranceScreen> {
                 background: Container(
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Color(0xFF2D7D46), Color(0xFF1B5E34)],
+                      colors: [Color(0xFF1F5C3D), Color(0xFF2E7D52)],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
