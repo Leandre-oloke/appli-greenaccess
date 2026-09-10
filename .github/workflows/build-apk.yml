@@ -68,13 +68,18 @@ jobs:
       - name: flutter pub get
         run: flutter pub get
 
-      - name: flutter build apk --release
-        run: flutter build apk --release
+      - name: flutter build apk --release --split-per-abi
+        run: flutter build apk --release --split-per-abi
 
-      - name: Rename APK
+      - name: Rename APKs
         run: |
-          cp build/app/outputs/flutter-apk/app-release.apk \
-             "greenaccess-${GITHUB_SHA::7}.apk"
+          SHA=${GITHUB_SHA::7}
+          cd build/app/outputs/flutter-apk
+          for f in app-*-release.apk; do
+            abi=$(echo "$f" | sed -E 's/app-(.*)-release\.apk/\1/')
+            cp "$f" "$GITHUB_WORKSPACE/greenaccess-$SHA-$abi.apk"
+          done
+          ls -la "$GITHUB_WORKSPACE"/greenaccess-*.apk
 
       - uses: actions/upload-artifact@v4
         with:
