@@ -9,6 +9,7 @@ import '../../viewmodels/auth_viewmodel.dart';
 import '../../viewmodels/scoring_viewmodel.dart';
 import '../../viewmodels/formation_viewmodel.dart';
 import '../../viewmodels/notification_viewmodel.dart';
+import '../../viewmodels/assurance_viewmodel.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -260,18 +261,58 @@ class _FinancementCard extends StatelessWidget {
   }
 }
 
-class _AssuranceCard extends StatelessWidget {
+class _AssuranceCard extends ConsumerWidget {
   const _AssuranceCard();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final uid = ref.watch(authViewModelProvider.select((s) => s.user?.id ?? ''));
+    final contrats = ref.watch(assuranceViewModelProvider(uid).select((s) => s.contrats));
+
+    final expiringSoon = contrats.where((c) {
+      if (c.statut.name != 'actif') return false;
+      final expiry = DateTime(c.dateDebut.year, c.dateDebut.month + 12, c.dateDebut.day);
+      final days = expiry.difference(DateTime.now()).inDays;
+      return days >= 0 && days <= 30;
+    }).toList();
+
     return Card(
-      child: ListTile(
-        leading: const Icon(Icons.umbrella_outlined, color: AppColors.primary, size: 32),
-        title: const Text('Assurance Climatique', style: TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: const Text('Gérer vos contrats et zones à risque'),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () => context.go(AppRoutes.assurance),
+      child: Column(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.umbrella_outlined, color: AppColors.primary, size: 32),
+            title: const Text('Assurance Climatique', style: TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: Text(
+              contrats.isEmpty
+                  ? 'Gérer vos contrats et zones à risque'
+                  : '${contrats.length} contrat${contrats.length > 1 ? 's' : ''}',
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.go(AppRoutes.assurance),
+          ),
+          if (expiringSoon.isNotEmpty)
+            Container(
+              margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.warning.withValues(alpha: 0.4)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.timer_outlined, size: 16, color: AppColors.warning),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${expiringSoon.length} contrat${expiringSoon.length > 1 ? 's expirent' : ' expire'} bientôt — pensez à renouveler',
+                      style: const TextStyle(fontSize: 12, color: AppColors.warning, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }

@@ -96,6 +96,8 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> {
                       onTap: () => _openUrl(course.urlPdf!),
                       isPdf: true,
                     ),
+                  if (course.type == CourseType.infographie && course.urlPdf != null)
+                    _InfographieCard(url: course.urlPdf!, onOpenUrl: _openUrl),
                   const SizedBox(height: 16),
                   _MetaRow(course: course),
                   const SizedBox(height: 20),
@@ -267,6 +269,122 @@ class _VideoLinkCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _InfographieCard extends StatefulWidget {
+  final String url;
+  final Future<void> Function(String) onOpenUrl;
+  const _InfographieCard({required this.url, required this.onOpenUrl});
+
+  @override
+  State<_InfographieCard> createState() => _InfographieCardState();
+}
+
+class _InfographieCardState extends State<_InfographieCard> {
+  bool _expanded = false;
+
+  bool get _isImage {
+    final lower = widget.url.toLowerCase();
+    return lower.contains('.jpg') ||
+        lower.contains('.jpeg') ||
+        lower.contains('.png') ||
+        lower.contains('.webp') ||
+        lower.contains('.gif');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        GestureDetector(
+          onTap: () {
+            if (_isImage) {
+              setState(() => _expanded = !_expanded);
+            } else {
+              widget.onOpenUrl(widget.url);
+            }
+          },
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              gradient: const LinearGradient(
+                colors: [Color(0xFF558B2F), Color(0xFF8BC34A)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 28,
+                  backgroundColor: Colors.white.withValues(alpha: 0.2),
+                  child: const Icon(Icons.image_outlined, color: Colors.white, size: 30),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Voir l\'infographie',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                      const SizedBox(height: 2),
+                      Text(
+                        _isImage
+                            ? (_expanded ? 'Appuyez pour réduire' : 'Appuyez pour afficher')
+                            : 'S\'ouvre dans votre navigateur',
+                        style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  _isImage ? (_expanded ? Icons.expand_less : Icons.expand_more) : Icons.open_in_new,
+                  color: Colors.white.withValues(alpha: 0.8),
+                ),
+              ],
+            ),
+          ),
+        ),
+        // Image inline si URL image et expanded
+        if (_isImage && _expanded)
+          Container(
+            margin: const EdgeInsets.only(top: 8),
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(12)),
+            clipBehavior: Clip.antiAlias,
+            child: Image.network(
+              widget.url,
+              fit: BoxFit.contain,
+              loadingBuilder: (_, child, progress) => progress == null
+                  ? child
+                  : Container(
+                      height: 200,
+                      color: AppColors.primarySoft,
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          value: progress.expectedTotalBytes != null
+                              ? progress.cumulativeBytesLoaded / progress.expectedTotalBytes!
+                              : null,
+                        ),
+                      ),
+                    ),
+              errorBuilder: (_, __, ___) => Container(
+                height: 120,
+                color: AppColors.primarySoft,
+                child: const Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.broken_image_outlined, size: 40, color: AppColors.textSecondary),
+                    SizedBox(height: 8),
+                    Text('Image non disponible', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

@@ -75,10 +75,20 @@ class FormationViewModel extends StateNotifier<FormationState> {
     return _repository.fetchQuiz(courseId);
   }
 
-  Future<void> submitQuiz(String courseId, List<int> answers, List<QuizQuestion> questions) async {
+  Future<void> submitQuiz(
+    String courseId,
+    List<int> answers,
+    List<QuizQuestion> questions, {
+    List<List<int>> orderAnswers = const [],
+  }) async {
     int correct = 0;
     for (int i = 0; i < questions.length; i++) {
-      if (answers[i] == questions[i].correctIndex) correct++;
+      final q = questions[i];
+      if (q.type == 'ordre') {
+        if (orderAnswers.length > i && q.isOrderCorrect(orderAnswers[i])) correct++;
+      } else {
+        if (answers[i] == q.correctIndex) correct++;
+      }
     }
     final score = questions.isEmpty ? 0 : ((correct / questions.length) * 100).round();
     final course = state.courses.firstWhere((c) => c.id == courseId);

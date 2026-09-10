@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import '../models/user_model.dart';
 
 class AuthRepository {
@@ -69,6 +70,18 @@ class AuthRepository {
 
   Future<void> saveUserProfile(UserModel user) async {
     await _firestore.collection('users').doc(user.id).set(user.toFirestore(), SetOptions(merge: true));
+  }
+
+  /// Récupère et sauvegarde le token FCM de l'appareil dans le profil Firestore.
+  Future<void> saveFcmToken(String userId) async {
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token != null) {
+        await _firestore.collection('users').doc(userId).update({'fcm_token': token});
+      }
+    } catch (_) {
+      // Non bloquant — l'app fonctionne sans FCM token
+    }
   }
 
   Future<void> changePassword(String currentPassword, String newPassword) async {

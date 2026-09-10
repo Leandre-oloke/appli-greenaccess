@@ -8,6 +8,7 @@ import 'views/assurance/assurance_screen.dart';
 import 'views/assurance/fiches_produit_screen.dart';
 import 'views/assurance/mes_contrats_screen.dart';
 import 'views/assurance/simulateur_assurance_screen.dart';
+import 'views/assurance/sinistre_form_screen.dart';
 import 'views/assurance/souscription_screen.dart';
 import 'views/auth/login_screen.dart';
 import 'views/auth/onboarding_screen.dart';
@@ -18,6 +19,8 @@ import 'views/dashboard/dashboard_screen.dart';
 import 'views/financement/demande_form_screen.dart';
 import 'views/financement/financement_screen.dart';
 import 'views/financement/partenaires_screen.dart';
+import 'views/financement/paiement_screen.dart';
+import 'views/financement/remboursements_screen.dart';
 import 'views/financement/statut_demande_screen.dart';
 import 'views/formation/badges_screen.dart';
 import 'views/formation/course_detail_screen.dart';
@@ -36,6 +39,8 @@ import 'views/admin/admin_lecons_screen.dart';
 import 'views/admin/admin_contrats_screen.dart';
 import 'views/admin/admin_users_screen.dart';
 import 'views/admin/admin_demandes_screen.dart';
+import 'views/admin/admin_analytics_screen.dart';
+import 'views/admin/admin_partenaires_screen.dart';
 import 'views/admin/admin_settings_screen.dart';
 import 'views/notifications/notifications_screen.dart';
 
@@ -62,11 +67,15 @@ class AppRoutes {
   static const simulateurAssurance = '/assurance/simulateur';
   static const souscription        = '/assurance/souscrire';
   static const mesContrats         = '/assurance/contrats';
+  static String sinistreForm(String contratId) => '/assurance/sinistre/$contratId';
   static const notifications       = '/dashboard/notifications';
 
   static String courseDetailPath(String id)  => '/formation/$id';
   static String quizPath(String id)          => '/formation/$id/quiz';
   static String statutDemandePath(String id) => '/financement/statut/$id';
+  static String remboursementsPath(String id) => '/financement/statut/$id/remboursements';
+  static String paiementPath(String demandeId, String echeanceId) =>
+      '/financement/statut/$demandeId/remboursements/$echeanceId/payer';
 
   // ── Admin ──────────────────────────────────────────────────────────────────
   static const adminDashboard  = '/admin';
@@ -74,6 +83,8 @@ class AppRoutes {
   static const adminUsers      = '/admin/users';
   static const adminDemandes   = '/admin/demandes';
   static const adminContrats   = '/admin/contrats';
+  static const adminPartenaires = '/admin/partenaires';
+  static const adminAnalytics  = '/admin/analytics';
   static const adminSettings   = '/admin/settings';
   static const adminCourseNew  = '/admin/formations/new';
   static String adminCourseEdit(String id)              => '/admin/formations/$id';
@@ -226,6 +237,35 @@ final routerProvider = Provider<GoRouter>((ref) {
                     s,
                     StatutDemandeScreen(demandeId: s.pathParameters['demandeId']!),
                   ),
+                  routes: [
+                    GoRoute(
+                      path: 'remboursements',
+                      pageBuilder: (_, s) => _fadePage(
+                        s,
+                        RemboursementsScreen(
+                          demandeId: s.pathParameters['demandeId']!,
+                          montantTotal: (s.extra as double?) ?? 0,
+                        ),
+                      ),
+                      routes: [
+                        GoRoute(
+                          path: ':echeanceId/payer',
+                          pageBuilder: (_, s) {
+                            final extra = s.extra as Map<String, dynamic>? ?? {};
+                            return _fadePage(
+                              s,
+                              PaiementScreen(
+                                demandeId: s.pathParameters['demandeId']!,
+                                echeanceId: s.pathParameters['echeanceId']!,
+                                numeroEcheance: extra['numeroEcheance'] as int? ?? 0,
+                                montant: (extra['montant'] as num?)?.toDouble() ?? 0,
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -241,6 +281,13 @@ final routerProvider = Provider<GoRouter>((ref) {
                 GoRoute(path: 'simulateur', pageBuilder: (_, s) => _fadePage(s, const SimulateurAssuranceScreen())),
                 GoRoute(path: 'souscrire',  pageBuilder: (_, s) => _fadePage(s, const SouscriptionScreen())),
                 GoRoute(path: 'contrats',   pageBuilder: (_, s) => _fadePage(s, const MesContratsScreen())),
+                GoRoute(
+                  path: 'sinistre/:contratId',
+                  pageBuilder: (_, s) => _fadePage(
+                    s,
+                    SinistreFormScreen(contratId: s.pathParameters['contratId']!),
+                  ),
+                ),
               ],
             ),
           ]),
@@ -324,8 +371,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(path: AppRoutes.adminUsers,    pageBuilder: (_, s) => _fadePage(s, const AdminUsersScreen())),
           GoRoute(path: AppRoutes.adminDemandes, pageBuilder: (_, s) => _fadePage(s, const AdminDemandesScreen())),
-          GoRoute(path: AppRoutes.adminContrats, pageBuilder: (_, s) => _fadePage(s, const AdminContratsScreen())),
-          GoRoute(path: AppRoutes.adminSettings, pageBuilder: (_, s) => _fadePage(s, const AdminSettingsScreen())),
+          GoRoute(path: AppRoutes.adminContrats,  pageBuilder: (_, s) => _fadePage(s, const AdminContratsScreen())),
+          GoRoute(path: AppRoutes.adminPartenaires, pageBuilder: (_, s) => _fadePage(s, const AdminPartenairesScreen())),
+          GoRoute(path: AppRoutes.adminAnalytics,  pageBuilder: (_, s) => _fadePage(s, const AdminAnalyticsScreen())),
+          GoRoute(path: AppRoutes.adminSettings,   pageBuilder: (_, s) => _fadePage(s, const AdminSettingsScreen())),
         ],
       ),
     ],

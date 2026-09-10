@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/demande_financement_model.dart';
+import '../models/remboursement_model.dart';
 import '../repositories/financement_repository.dart';
 
 class SimulationFinancement {
@@ -106,6 +107,24 @@ class FinancementViewModel extends StateNotifier<FinancementState> {
 
   Future<DemandeFinancementModel?> getStatut(String demandeId) async {
     return _repository.fetchStatut(demandeId);
+  }
+
+  Future<List<RemboursementModel>> getRemboursements(String demandeId) async {
+    return _repository.fetchRemboursements(demandeId);
+  }
+
+  Future<void> genererEcheancier({
+    required String demandeId,
+    required double montantTotal,
+    required int dureesMois,
+    required DateTime dateDebut,
+  }) async {
+    await _repository.genererEcheancier(
+      demandeId: demandeId,
+      montantTotal: montantTotal,
+      dureesMois: dureesMois,
+      dateDebut: dateDebut,
+    );
   }
 }
 

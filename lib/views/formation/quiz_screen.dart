@@ -19,6 +19,8 @@ class _QuizScreenState extends ConsumerState<QuizScreen>
     with SingleTickerProviderStateMixin {
   List<QuizQuestion> _questions = [];
   final List<int?> _answers = [];
+  // Pour les questions 'ordre' : ordre courant des indices d'options
+  final List<List<int>> _orderAnswers = [];
   int _current = 0;
   bool _submitted = false;
   bool _loading = true;
@@ -40,6 +42,8 @@ class _QuizScreenState extends ConsumerState<QuizScreen>
       setState(() {
         _questions = questions;
         _answers.addAll(List.filled(questions.length, null));
+        _orderAnswers.addAll(questions.map((q) =>
+            q.type == 'ordre' ? List<int>.generate(q.options.length, (i) => i) : <int>[]));
         _loading = false;
       });
       _animCtrl.forward();
@@ -49,6 +53,22 @@ class _QuizScreenState extends ConsumerState<QuizScreen>
   void _selectAnswer(int idx) {
     if (_submitted) return;
     setState(() => _answers[_current] = idx);
+  }
+
+  void _reorderAnswer(int oldIndex, int newIndex) {
+    if (_submitted) return;
+    setState(() {
+      final list = _orderAnswers[_current];
+      if (newIndex > oldIndex) newIndex--;
+      final item = list.removeAt(oldIndex);
+      list.insert(newIndex, item);
+    });
+  }
+
+  bool get _currentAnswered {
+    final q = _questions[_current];
+    if (q.type == 'ordre') return true; // toujours valide (l'utilisateur peut laisser l'ordre par défaut)
+    return _answers[_current] != null;
   }
 
   void _next() {
@@ -69,6 +89,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen>
           widget.courseId,
           _answers.map((a) => a ?? -1).toList(),
           _questions,
+          orderAnswers: _orderAnswers,
         );
   }
 
@@ -81,7 +102,12 @@ class _QuizScreenState extends ConsumerState<QuizScreen>
   int get _score {
     int correct = 0;
     for (int i = 0; i < _questions.length; i++) {
-      if (_answers[i] == _questions[i].correctIndex) correct++;
+      final q = _questions[i];
+      if (q.type == 'ordre') {
+        if (q.isOrderCorrect(_orderAnswers[i])) correct++;
+      } else {
+        if (_answers[i] == q.correctIndex) correct++;
+      }
     }
     return correct;
   }
@@ -128,18 +154,25 @@ class _QuizScreenState extends ConsumerState<QuizScreen>
                     const SizedBox(height: 16),
                     _QuestionCard(question: q),
                     const SizedBox(height: 24),
-                    ...List.generate(
-                      q.options.length,
-                      (i) => _OptionTile(
-                        label: q.options[i],
-                        index: i,
-                        selected: _answers[_current] == i,
-                        onTap: () => _selectAnswer(i),
+                    if (q.type == 'ordre')
+                      _OrderWidget(
+                        options: q.options,
+                        currentOrder: _orderAnswers[_current],
+                        onReorder: _reorderAnswer,
+                      )
+                    else
+                      ...List.generate(
+                        q.options.length,
+                        (i) => _OptionTile(
+                          label: q.options[i],
+                          index: i,
+                          selected: _answers[_current] == i,
+                          onTap: () => _selectAnswer(i),
+                        ),
                       ),
-                    ),
                     const SizedBox(height: 32),
                     ElevatedButton(
-                      onPressed: _answers[_current] == null ? null : _next,
+                      onPressed: _currentAnswered ? _next : null,
                       child: Text(_current == _questions.length - 1 ? 'Terminer' : 'Suivant'),
                     ),
                   ],
@@ -234,6 +267,82 @@ class _OptionTile extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _OrderWidget extends StatelessWidget {
+  final List<String> options;
+  final List<int> currentOrder;
+  final void Function(int oldIndex, int newIndex) onReorder;
+  const _OrderWidget({
+    required this.options,
+    required this.currentOrder,
+    required this.onReorder,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Glissez les éléments pour les mettre dans le bon ordre :',
+          style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 10),
+        ReorderableListView(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          onReorder: onReorder,
+          children: [
+            for (int i = 0; i < currentOrder.length; i++)
+              _OrderItem(
+                key: ValueKey(currentOrder[i]),
+                rank: i + 1,
+                label: options[currentOrder[i]],
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _OrderItem extends StatelessWidget {
+  final int rank;
+  final String label;
+  const _OrderItem({super.key, required this.rank, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 13,
+            backgroundColor: AppColors.primary.withValues(alpha: 0.12),
+            child: Text(
+              '$rank',
+              style: const TextStyle(
+                color: AppColors.primary,
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Text(label, style: const TextStyle(fontSize: 14))),
+          const Icon(Icons.drag_handle, color: AppColors.textSecondary, size: 20),
+        ],
       ),
     );
   }

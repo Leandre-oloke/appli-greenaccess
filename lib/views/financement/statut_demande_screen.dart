@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/demande_financement_model.dart';
+import '../../routes.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 import '../../viewmodels/financement_viewmodel.dart';
 
@@ -58,9 +64,135 @@ class _DemandeDetail extends StatelessWidget {
     return _steps.indexOf(demande.statut).clamp(0, _steps.length - 1);
   }
 
+  bool get _isApprouve =>
+      demande.statut == StatutDemande.approuve || demande.statut == StatutDemande.finance;
+
+  Future<void> _exportContratPdf(BuildContext context) async {
+    final fmt = NumberFormat('#,##0', 'fr_FR');
+    final fmtDate = DateFormat('dd/MM/yyyy');
+
+    final doc = pw.Document();
+    doc.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(40),
+        build: (pw.Context ctx) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            // En-tête
+            pw.Container(
+              padding: const pw.EdgeInsets.all(16),
+              decoration: pw.BoxDecoration(
+                color: PdfColor.fromInt(0xFF2E7D32),
+                borderRadius: pw.BorderRadius.circular(8),
+              ),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text('GreenAccess',
+                          style: pw.TextStyle(
+                              fontSize: 22,
+                              fontWeight: pw.FontWeight.bold,
+                              color: PdfColors.white)),
+                      pw.Text('Financement climatique',
+                          style: pw.TextStyle(color: PdfColor.fromInt(0xCCFFFFFF), fontSize: 12)),
+                    ],
+                  ),
+                  pw.Text('CONTRAT DE FINANCEMENT',
+                      style: pw.TextStyle(
+                          fontSize: 13,
+                          fontWeight: pw.FontWeight.bold,
+                          color: PdfColors.white)),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 24),
+
+            // Référence
+            pw.Text('Référence : ${demande.id}',
+                style: pw.TextStyle(fontSize: 11, color: PdfColors.grey600)),
+            pw.Text('Date d\'émission : ${fmtDate.format(DateTime.now())}',
+                style: pw.TextStyle(fontSize: 11, color: PdfColors.grey600)),
+            pw.SizedBox(height: 20),
+            pw.Divider(),
+            pw.SizedBox(height: 12),
+
+            // Montant
+            pw.Center(
+              child: pw.Column(children: [
+                pw.Text('Montant approuvé',
+                    style: pw.TextStyle(fontSize: 12, color: PdfColors.grey700)),
+                pw.SizedBox(height: 4),
+                pw.Text('${fmt.format(demande.montant)} FCFA',
+                    style: pw.TextStyle(fontSize: 28, fontWeight: pw.FontWeight.bold,
+                        color: PdfColor.fromInt(0xFF2E7D32))),
+              ]),
+            ),
+            pw.SizedBox(height: 20),
+            pw.Divider(),
+            pw.SizedBox(height: 16),
+
+            // Détails
+            _pdfRow('Statut', 'Approuvé'),
+            _pdfRow('Type de projet', demande.typeProjet),
+            _pdfRow('Secteur', demande.secteur),
+            _pdfRow('Pays', demande.pays),
+            _pdfRow('Score d\'éligibilité', '${demande.scoreEligibilite.round()}/100'),
+            _pdfRow('Alignement UEMOA', demande.alignementTaxonomie),
+            _pdfRow('Date de soumission', fmtDate.format(demande.dateSoumission)),
+            pw.SizedBox(height: 24),
+
+            // Description
+            if (demande.descriptionProjet.isNotEmpty) ...[
+              pw.Text('Description du projet',
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 13)),
+              pw.SizedBox(height: 6),
+              pw.Text(demande.descriptionProjet,
+                  style: const pw.TextStyle(fontSize: 11, color: PdfColors.grey800)),
+              pw.SizedBox(height: 24),
+            ],
+
+            pw.Spacer(),
+            pw.Divider(),
+            pw.SizedBox(height: 8),
+            pw.Center(
+              child: pw.Text(
+                'Document généré par GreenAccess — ${fmtDate.format(DateTime.now())}',
+                style: pw.TextStyle(fontSize: 9, color: PdfColors.grey500),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    await Printing.sharePdf(bytes: await doc.save(), filename: 'contrat_${demande.id}.pdf');
+  }
+
+  pw.Widget _pdfRow(String label, String value) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 5),
+      child: pw.Row(
+        children: [
+          pw.Expanded(
+              flex: 2,
+              child: pw.Text(label,
+                  style: pw.TextStyle(fontSize: 11, color: PdfColors.grey700))),
+          pw.Expanded(
+              flex: 3,
+              child: pw.Text(value,
+                  style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold))),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isRejete = demande.statut == StatutDemande.rejete;
+    final isFinance = demande.statut == StatutDemande.finance;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -73,6 +205,40 @@ class _DemandeDetail extends StatelessWidget {
           else _TimelineCard(currentIndex: _currentStepIndex),
           const SizedBox(height: 16),
           _DetailsCard(demande: demande),
+
+          // ── Actions disponibles quand approuvé ou financé ─────────────
+          if (_isApprouve) ...[
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.picture_as_pdf_outlined),
+              label: const Text('Télécharger le contrat PDF'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () => _exportContratPdf(context),
+            ),
+            if (isFinance) ...[
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.calendar_month_outlined),
+                label: const Text('Voir les remboursements'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.primary,
+                  side: const BorderSide(color: AppColors.primary),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: () => context.push(
+                  AppRoutes.remboursementsPath(demande.id),
+                  extra: demande.montant,
+                ),
+              ),
+            ],
+          ],
+          const SizedBox(height: 24),
         ],
       ),
     );

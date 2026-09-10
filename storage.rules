@@ -1,0 +1,57 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isAuth() && request.auth.uid == uid;
+    }
+
+    function isAdmin() {
+      return isAuth() &&
+        firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Taille max 10 Mo, formats acceptés
+    function isValidDoc() {
+      return request.resource.size < 10 * 1024 * 1024
+          && request.resource.contentType.matches('image/.*|application/pdf');
+    }
+
+    // ── Documents contrats assurance ──────────────────────────────────────────
+    // Chemin : contrats/{userId}/{contratId}/{nomDocument}.{ext}
+    match /contrats/{userId}/{contratId}/{fileName} {
+      allow read:  if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId) && isValidDoc();
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    // ── Photos sinistres ───────────────────────────────────────────────────────
+    // Chemin : sinistres/{userId}/{contratId}/{fileName}
+    match /sinistres/{userId}/{contratId}/{fileName} {
+      allow read:  if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId) && isValidDoc();
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    // ── Profils utilisateurs ───────────────────────────────────────────────────
+    // Chemin : profiles/{userId}/{fileName}
+    match /profiles/{userId}/{fileName} {
+      allow read:  if isAuth();
+      allow write: if isOwner(userId) && request.resource.size < 5 * 1024 * 1024
+                                       && request.resource.contentType.matches('image/.*');
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    // ── Ressources formations (accès admin en écriture, tous en lecture) ───────
+    match /formations/{allPaths=**} {
+      allow read:  if isAuth();
+      allow write: if isAdmin();
+    }
+  }
+}

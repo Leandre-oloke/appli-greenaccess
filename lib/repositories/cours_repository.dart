@@ -106,6 +106,7 @@ class CoursRepository {
   }
 
   Future<void> markComplete(String userId, String courseId, int scoreQuiz, int pointsXp) async {
+    final badgeDeclenche = scoreQuiz >= 70;
     await _firestore
         .collection('users')
         .doc(userId)
@@ -116,8 +117,57 @@ class CoursRepository {
       'score_quiz': scoreQuiz,
       'date_completion': FieldValue.serverTimestamp(),
       'points_xp_gagnés': pointsXp,
-      'badge_declenche': scoreQuiz == 100,
+      'badge_declenche': badgeDeclenche,
     }, SetOptions(merge: true));
+
+    if (badgeDeclenche) {
+      await _triggerBadge(userId, courseId, scoreQuiz);
+    }
+  }
+
+  Future<void> _triggerBadge(String userId, String courseId, int scoreQuiz) async {
+    final badgeId = 'cours_$courseId';
+    final badgeRef = _firestore
+        .collection('users')
+        .doc(userId)
+        .collection('badges')
+        .doc(badgeId);
+
+    final existing = await badgeRef.get();
+    if (existing.exists) return; // badge déjà délivré
+
+    final nom = scoreQuiz == 100 ? 'Expert Vert — $courseId' : 'Cours complété';
+    await badgeRef.set({
+      'nom': nom,
+      'description': scoreQuiz == 100
+          ? 'Quiz réussi à 100% — maîtrise parfaite du cours.'
+          : 'Cours terminé avec $scoreQuiz% au quiz.',
+      'image_url': '',
+      'type': 'formation',
+      'date_obtention': FieldValue.serverTimestamp(),
+      'course_id': courseId,
+      'score_quiz': scoreQuiz,
+    });
+  }
+
+  Future<void> triggerAssureClimatBadge(String userId) async {
+    const badgeId = 'assure_climat';
+    final badgeRef = _firestore
+        .collection('users')
+        .doc(userId)
+        .collection('badges')
+        .doc(badgeId);
+
+    final existing = await badgeRef.get();
+    if (existing.exists) return;
+
+    await badgeRef.set({
+      'nom': 'Assuré Climat 🌿',
+      'description': 'Vous avez souscrit à votre première assurance climatique. Votre activité est maintenant protégée.',
+      'image_url': '',
+      'type': 'assurance',
+      'date_obtention': FieldValue.serverTimestamp(),
+    });
   }
 
   Future<List<CourseProgress>> fetchProgress(String userId) async {

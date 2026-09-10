@@ -11,8 +11,12 @@ service cloud.firestore {
       return isAuth() && request.auth.uid == uid;
     }
 
+    // Lecture du rôle avec vérification d'existence pour éviter les erreurs
+    // si le document utilisateur n'existe pas encore.
     function getUserRole() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+        : 'user';
     }
 
     function isAdmin() {
@@ -47,13 +51,13 @@ service cloud.firestore {
       allow write: if isOwner(userId) || isAdmin();
     }
 
-    // ── Notifications personnelles (contrat, etc.) ────────────────────────────
+    // ── Notifications personnelles ────────────────────────────────────────────
     match /users/{userId}/notifications/{notifId} {
-      allow read: if isOwner(userId);
+      allow read: if isOwner(userId) || isAdmin();
       allow write: if isAdmin();
     }
 
-    // ── Notifications ────────────────────────────────────────────────────────
+    // ── Notifications globales ────────────────────────────────────────────────
     match /notifications/{notificationId} {
       allow read: if isAuth();
       allow create, delete: if isAdmin();
@@ -64,23 +68,27 @@ service cloud.firestore {
       allow read: if isAuth();
       allow write: if isAdmin();
 
-      // ── Leçons (sous-collection) ─────────────────────────────────────────
       match /lecons/{leconId} {
         allow read: if isAuth();
         allow write: if isAdmin();
       }
 
-      // ── Quiz (sous-collection) ───────────────────────────────────────────
       match /quiz/{quizId} {
         allow read: if isAuth();
         allow write: if isAdmin();
+      }
+
+      // Progression individuelle (collectionGroup 'progress')
+      match /progress/{userId} {
+        allow read, write: if isOwner(userId) || isAdmin();
       }
     }
 
     // ── Scores Climat ────────────────────────────────────────────────────────
     match /scores_climat/{scoreId} {
-      // isPartenaireFinanceur() EN PREMIER — pas de dépendance à resource.data
-      allow read: if isPartenaireFinanceur() || (isAuth() && resource.data.userId == request.auth.uid);
+      allow read: if isAdmin()
+                  || isPartenaireFinanceur()
+                  || (isAuth() && resource.data.userId == request.auth.uid);
       allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
       allow update: if isAdmin();
       allow delete: if isAdmin();
@@ -88,11 +96,31 @@ service cloud.firestore {
 
     // ── Demandes de financement ───────────────────────────────────────────────
     match /demandes_financement/{demandeId} {
-      // isPartenaireFinanceur() EN PREMIER — pas de dépendance à resource.data
-      allow read: if isPartenaireFinanceur() || (isAuth() && resource.data.userId == request.auth.uid);
+      allow read: if isAdmin()
+                  || isPartenaireFinanceur()
+                  || (isAuth() && resource.data.userId == request.auth.uid);
       allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
-      allow update: if isPartenaireFinanceur()
+      allow update: if isAdmin()
+                    || isPartenaireFinanceur()
                     || (isOwner(resource.data.userId) && resource.data.statut == 'brouillon');
+      allow delete: if isAdmin();
+
+      // Sous-collection remboursements
+      match /remboursements/{echeanceId} {
+        allow read: if isAdmin()
+                    || (isAuth() && get(/databases/$(database)/documents/demandes_financement/$(demandeId)).data.userId == request.auth.uid);
+        allow write: if isAdmin()
+                     || (isAuth() && get(/databases/$(database)/documents/demandes_financement/$(demandeId)).data.userId == request.auth.uid);
+      }
+    }
+
+    // ── Paiements ─────────────────────────────────────────────────────────────
+    match /paiements/{paiementId} {
+      allow read: if isAdmin()
+                  || (isAuth() && resource.data.userId == request.auth.uid);
+      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAdmin()
+                    || (isAuth() && resource.data.userId == request.auth.uid);
       allow delete: if isAdmin();
     }
 
@@ -104,12 +132,23 @@ service cloud.firestore {
 
     // ── Contrats assurance ────────────────────────────────────────────────────
     match /contrats_assurance/{contratId} {
-      // isPartenaireAssureur() EN PREMIER — pas de dépendance à resource.data
-      // Firestore évalue l'OR de gauche à droite ; mettre la condition sans
-      // resource.data en premier permet les requêtes admin sans clause where.
-      allow read: if isPartenaireAssureur() || (isAuth() && resource.data.userId == request.auth.uid);
+      // isAdmin() EN PREMIER (sans resource.data) pour permettre les
+      // lectures de collection admin sans clause where.
+      allow read: if isAdmin()
+                  || isPartenaireAssureur()
+                  || (isAuth() && resource.data.userId == request.auth.uid);
       allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
-      allow update: if isPartenaireAssureur();
+      allow update: if isAdmin() || isPartenaireAssureur();
+      allow delete: if isAdmin();
+    }
+
+    // ── Sinistres ─────────────────────────────────────────────────────────────
+    match /sinistres/{sinistreId} {
+      allow read: if isAdmin()
+                  || isPartenaireAssureur()
+                  || (isAuth() && resource.data.userId == request.auth.uid);
+      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAdmin() || isPartenaireAssureur();
       allow delete: if isAdmin();
     }
 

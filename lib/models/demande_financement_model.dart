@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 enum StatutDemande { brouillon, soumis, enExamen, approuve, rejete, finance }
 
 class DemandeFinancementModel {
@@ -34,10 +36,16 @@ class DemandeFinancementModel {
   });
 
   factory DemandeFinancementModel.fromFirestore(Map<String, dynamic> data, String id) {
+    DateTime dateSoumission;
+    try {
+      dateSoumission = (data['date_soumission'] as Timestamp).toDate();
+    } catch (_) {
+      dateSoumission = DateTime.now();
+    }
     return DemandeFinancementModel(
       id: id,
       userId: data['userId'] ?? '',
-      dateSoumission: (data['date_soumission'] as dynamic).toDate(),
+      dateSoumission: dateSoumission,
       montant: (data['montant'] ?? 0).toDouble(),
       typeProjet: data['type_projet'] ?? '',
       secteur: data['secteur'] ?? '',
@@ -57,7 +65,7 @@ class DemandeFinancementModel {
 
   Map<String, dynamic> toFirestore() => {
         'userId': userId,
-        'date_soumission': dateSoumission,
+        'date_soumission': Timestamp.fromDate(dateSoumission),
         'montant': montant,
         'type_projet': typeProjet,
         'secteur': secteur,

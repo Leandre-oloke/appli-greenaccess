@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/demande_financement_model.dart';
+import '../models/remboursement_model.dart';
 
 class FinancementRepository {
   final FirebaseFirestore _firestore;
@@ -44,5 +45,46 @@ class FinancementRepository {
         .doc(demandeId)
         .snapshots()
         .map((doc) => DemandeFinancementModel.fromFirestore(doc.data()!, doc.id));
+  }
+
+  /// Récupère les échéances de remboursement d'une demande.
+  Future<List<RemboursementModel>> fetchRemboursements(String demandeId) async {
+    final snap = await _firestore
+        .collection('demandes_financement')
+        .doc(demandeId)
+        .collection('remboursements')
+        .orderBy('numero_echeance')
+        .get();
+    return snap.docs
+        .map((d) => RemboursementModel.fromFirestore(d.data(), d.id))
+        .toList();
+  }
+
+  /// Génère automatiquement un échéancier mensuel sur [dureesMois] mois.
+  Future<void> genererEcheancier({
+    required String demandeId,
+    required double montantTotal,
+    required int dureesMois,
+    required DateTime dateDebut,
+  }) async {
+    final mensualite = montantTotal / dureesMois;
+    final col = _firestore
+        .collection('demandes_financement')
+        .doc(demandeId)
+        .collection('remboursements');
+
+    final batch = _firestore.batch();
+    for (int i = 1; i <= dureesMois; i++) {
+      final doc = col.doc();
+      batch.set(doc, {
+        'demandeId': demandeId,
+        'numero_echeance': i,
+        'date_echeance': DateTime(dateDebut.year, dateDebut.month + i, dateDebut.day),
+        'montant': mensualite,
+        'paye': false,
+        'date_paiement': null,
+      });
+    }
+    await batch.commit();
   }
 }

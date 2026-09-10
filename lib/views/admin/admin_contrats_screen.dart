@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/assurance_model.dart';
 import '../../viewmodels/admin_viewmodel.dart';
@@ -62,6 +63,29 @@ class _AdminContratsScreenState extends ConsumerState<AdminContratsScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
+                // Bannière d'erreur persistante (règles Firestore, réseau, etc.)
+                if (state.error != null)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    color: AppColors.error.withValues(alpha: 0.1),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.warning_amber_rounded, color: AppColors.error, size: 18),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            state.error!,
+                            style: const TextStyle(color: AppColors.error, fontSize: 13),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => ref.read(adminViewModelProvider.notifier).loadContrats(),
+                          child: const Text('Réessayer'),
+                        ),
+                      ],
+                    ),
+                  ),
                 _FiltreChips(
                   selected: _filtre,
                   total: state.contrats.length,
@@ -70,13 +94,20 @@ class _AdminContratsScreenState extends ConsumerState<AdminContratsScreen> {
                 ),
                 Expanded(
                   child: contrats.isEmpty
-                      ? const Center(
+                      ? Center(
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.shield_outlined, size: 64, color: AppColors.textSecondary),
-                              SizedBox(height: 12),
-                              Text('Aucun contrat', style: TextStyle(color: AppColors.textSecondary)),
+                              const Icon(Icons.shield_outlined, size: 64, color: AppColors.textSecondary),
+                              const SizedBox(height: 12),
+                              const Text('Aucun contrat', style: TextStyle(color: AppColors.textSecondary)),
+                              const SizedBox(height: 8),
+                              if (state.error == null)
+                                const Text(
+                                  'Les dossiers soumis par les utilisateurs\napparaîtront ici.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                                ),
                             ],
                           ),
                         )
@@ -213,16 +244,24 @@ class _Chip extends StatelessWidget {
 
 // ── Carte contrat ─────────────────────────────────────────────────────────────
 
-class _ContratCard extends StatelessWidget {
+class _ContratCard extends StatefulWidget {
   final ContratAssuranceModel contrat;
   final String userName;
   final ValueChanged<StatutContrat> onChangeStatut;
   const _ContratCard({required this.contrat, required this.userName, required this.onChangeStatut});
 
   @override
+  State<_ContratCard> createState() => _ContratCardState();
+}
+
+class _ContratCardState extends State<_ContratCard> {
+  bool _showDocs = false;
+
+  @override
   Widget build(BuildContext context) {
-    final color = _statutColor(contrat.statut);
+    final color = _statutColor(widget.contrat.statut);
     final fmt = DateFormat('dd/MM/yyyy');
+    final hasDocs = widget.contrat.docsUrl.isNotEmpty;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
@@ -242,25 +281,85 @@ class _ContratCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    userName,
+                    widget.userName,
                     style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                _StatutBadge(statut: contrat.statut),
+                _StatutBadge(statut: widget.contrat.statut),
               ],
             ),
             const SizedBox(height: 10),
 
             // Infos
-            _InfoRow(icon: Icons.location_on_outlined, label: 'Zone', value: contrat.zoneRisque),
-            _InfoRow(icon: Icons.category_outlined, label: 'Produit', value: contrat.produitId),
+            _InfoRow(icon: Icons.location_on_outlined, label: 'Zone', value: widget.contrat.zoneRisque),
+            _InfoRow(icon: Icons.category_outlined, label: 'Produit', value: widget.contrat.produitId),
             _InfoRow(
               icon: Icons.payments_outlined,
               label: 'Prime mensuelle',
-              value: '${contrat.primeMensuelle.toStringAsFixed(0)} FCFA',
+              value: '${widget.contrat.primeMensuelle.toStringAsFixed(0)} FCFA',
             ),
-            _InfoRow(icon: Icons.calendar_today_outlined, label: 'Depuis', value: fmt.format(contrat.dateDebut)),
+            _InfoRow(
+              icon: Icons.calendar_today_outlined,
+              label: 'Depuis',
+              value: fmt.format(widget.contrat.dateDebut),
+            ),
+
+            // ── Documents justificatifs ─────────────────────────────────
+            const SizedBox(height: 8),
+            InkWell(
+              onTap: hasDocs ? () => setState(() => _showDocs = !_showDocs) : null,
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                decoration: BoxDecoration(
+                  color: hasDocs
+                      ? AppColors.info.withValues(alpha: 0.08)
+                      : AppColors.divider.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: hasDocs
+                        ? AppColors.info.withValues(alpha: 0.35)
+                        : AppColors.divider,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.folder_outlined,
+                      size: 15,
+                      color: hasDocs ? AppColors.info : AppColors.textSecondary,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      hasDocs
+                          ? '${widget.contrat.docsUrl.length} document(s) joint(s)'
+                          : 'Aucun document fourni',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: hasDocs ? AppColors.info : AppColors.textSecondary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    if (hasDocs) ...[
+                      const Spacer(),
+                      Icon(
+                        _showDocs ? Icons.expand_less : Icons.expand_more,
+                        size: 16,
+                        color: AppColors.info,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+
+            if (_showDocs && hasDocs) ...[
+              const SizedBox(height: 8),
+              ...widget.contrat.docsUrl.asMap().entries.map(
+                    (e) => _DocRow(index: e.key + 1, url: e.value),
+                  ),
+            ],
 
             const SizedBox(height: 12),
             const Divider(height: 1),
@@ -276,11 +375,11 @@ class _ContratCard extends StatelessWidget {
                     scrollDirection: Axis.horizontal,
                     child: Row(
                       children: StatutContrat.values
-                          .where((s) => s != contrat.statut)
+                          .where((s) => s != widget.contrat.statut)
                           .map((s) => Padding(
                                 padding: const EdgeInsets.only(right: 6),
                                 child: GestureDetector(
-                                  onTap: () => onChangeStatut(s),
+                                  onTap: () => widget.onChangeStatut(s),
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                     decoration: BoxDecoration(
@@ -310,7 +409,70 @@ class _ContratCard extends StatelessWidget {
       ),
     );
   }
+}
 
+// ── Ligne document cliquable ───────────────────────────────────────────────────
+
+class _DocRow extends StatelessWidget {
+  final int index;
+  final String url;
+  const _DocRow({required this.index, required this.url});
+
+  String get _label {
+    final lower = url.toLowerCase();
+    if (lower.contains('piece_identite')) return 'Pièce d\'identité';
+    if (lower.contains('preuve_activite')) return 'Preuve d\'activité';
+    return 'Document $index';
+  }
+
+  bool get _isImage =>
+      url.contains('.jpg') || url.contains('.jpeg') || url.contains('.png');
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            _isImage ? Icons.image_outlined : Icons.picture_as_pdf_outlined,
+            size: 16,
+            color: AppColors.textSecondary,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _label,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+            ),
+          ),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            tooltip: 'Ouvrir le document',
+            icon: const Icon(Icons.open_in_new_outlined, size: 16, color: AppColors.primary),
+            onPressed: () async {
+              final uri = Uri.tryParse(url);
+              if (uri != null && await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              } else if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Impossible d\'ouvrir le document')),
+                );
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _InfoRow extends StatelessWidget {

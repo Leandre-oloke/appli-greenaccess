@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/assurance_model.dart';
 import '../repositories/assurance_repository.dart';
@@ -119,6 +120,53 @@ class AssuranceViewModel extends StateNotifier<AssuranceState> {
       state = state.copyWith(contratActif: contrat, isLoading: false);
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
+    }
+  }
+
+  Future<String?> uploadDocument({
+    required String contratId,
+    required File file,
+    required String nomDocument,
+  }) async {
+    try {
+      final url = await _repository.uploadDocument(
+        userId: userId,
+        contratId: contratId,
+        file: file,
+        nomDocument: nomDocument,
+      );
+      await _repository.ajouterDocumentUrl(contratId, url);
+      return url;
+    } catch (e) {
+      state = state.copyWith(error: 'Erreur upload : $e');
+      return null;
+    }
+  }
+
+  /// Soumet une déclaration de sinistre. Retourne null si succès, message d'erreur sinon.
+  Future<String?> declarerSinistre({
+    required String contratId,
+    required String typeSinistre,
+    required String description,
+    required DateTime dateSinistre,
+    List<File> photos = const [],
+  }) async {
+    state = state.copyWith(isLoading: true);
+    try {
+      await _repository.declarerSinistre(
+        userId: userId,
+        contratId: contratId,
+        typeSinistre: typeSinistre,
+        description: description,
+        dateSinistre: dateSinistre,
+        photos: photos,
+      );
+      // Rechargement pour refléter le statut "sinistre" du contrat
+      await loadContrats();
+      return null;
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: e.toString());
+      return e.toString();
     }
   }
 

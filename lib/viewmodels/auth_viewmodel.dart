@@ -46,6 +46,8 @@ class AuthViewModel extends StateNotifier<AuthState> {
         final user = await _repository.getCurrentUser();
         if (user != null) {
           state = state.copyWith(user: user, isAuthenticated: true, isLoading: false);
+          // Enregistre le token FCM pour recevoir les notifications push
+          await _repository.saveFcmToken(user.id);
         }
       } else {
         state = const AuthState();

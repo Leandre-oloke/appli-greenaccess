@@ -50,3 +50,12 @@ GoogleService-Info.plist
 firebase_app_id_file.json
 .env
 *.env
+
+# Cloud Functions (Node)
+functions/node_modules/
+functions/lib/
+functions/.env
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+.firebase/

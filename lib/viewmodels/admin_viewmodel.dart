@@ -8,6 +8,7 @@ import '../repositories/admin_repository.dart';
 
 class AdminState {
   final Map<String, int> stats;
+  final Map<String, dynamic> analytics;
   final List<CourseModel> courses;
   final List<UserModel> users;
   final List<DemandeFinancementModel> demandes;
@@ -19,6 +20,7 @@ class AdminState {
 
   const AdminState({
     this.stats = const {},
+    this.analytics = const {},
     this.courses = const [],
     this.users = const [],
     this.demandes = const [],
@@ -31,6 +33,7 @@ class AdminState {
 
   AdminState copyWith({
     Map<String, int>? stats,
+    Map<String, dynamic>? analytics,
     List<CourseModel>? courses,
     List<UserModel>? users,
     List<DemandeFinancementModel>? demandes,
@@ -41,6 +44,7 @@ class AdminState {
     String? successMessage,
   }) => AdminState(
     stats: stats ?? this.stats,
+    analytics: analytics ?? this.analytics,
     courses: courses ?? this.courses,
     users: users ?? this.users,
     demandes: demandes ?? this.demandes,
@@ -63,6 +67,16 @@ class AdminViewModel extends StateNotifier<AdminState> {
     try {
       final stats = await _repo.getStats();
       state = state.copyWith(stats: stats, isLoading: false);
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: e.toString());
+    }
+  }
+
+  Future<void> loadAnalytics() async {
+    state = state.copyWith(isLoading: true);
+    try {
+      final analytics = await _repo.getAnalytics();
+      state = state.copyWith(analytics: analytics, isLoading: false);
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
@@ -91,8 +105,15 @@ class AdminViewModel extends StateNotifier<AdminState> {
   Future<void> loadDemandes() async {
     state = state.copyWith(isLoading: true);
     try {
-      final demandes = await _repo.getAllDemandes();
-      state = state.copyWith(demandes: demandes, isLoading: false);
+      final results = await Future.wait([
+        _repo.getAllDemandes(),
+        _repo.getAllUsers(),
+      ]);
+      state = state.copyWith(
+        demandes: results[0] as List<DemandeFinancementModel>,
+        users: results[1] as List<UserModel>,
+        isLoading: false,
+      );
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
@@ -271,7 +292,18 @@ class AdminViewModel extends StateNotifier<AdminState> {
 
   Future<void> approuverDemande(String id) async {
     try {
+      final demande = state.demandes.where((d) => d.id == id).firstOrNull;
       await _repo.updateDemandeStatut(id, StatutDemande.approuve);
+      if (demande != null) {
+        await _repo.sendNotifToUser(
+          userId: demande.userId,
+          titre: 'Demande approuvée ✅',
+          message:
+              'Votre demande de financement (${demande.montant.toStringAsFixed(0)} FCFA) '
+              'a été approuvée. Un partenaire prendra contact avec vous.',
+          type: 'success',
+        );
+      }
       await loadDemandes();
       state = state.copyWith(successMessage: 'Demande approuvée');
     } catch (e) {
@@ -281,7 +313,18 @@ class AdminViewModel extends StateNotifier<AdminState> {
 
   Future<void> rejeterDemande(String id, String commentaire) async {
     try {
+      final demande = state.demandes.where((d) => d.id == id).firstOrNull;
       await _repo.updateDemandeStatut(id, StatutDemande.rejete, commentaire: commentaire);
+      if (demande != null) {
+        await _repo.sendNotifToUser(
+          userId: demande.userId,
+          titre: 'Demande non retenue',
+          message:
+              'Votre demande de financement (${demande.montant.toStringAsFixed(0)} FCFA) '
+              'n\'a pas été retenue. Motif : $commentaire',
+          type: 'warning',
+        );
+      }
       await loadDemandes();
       state = state.copyWith(successMessage: 'Demande rejetée');
     } catch (e) {

@@ -101,13 +101,16 @@ class QuizQuestion {
   final String question;
   final List<String> options;
   final int correctIndex;
-  final String type; // qcm, vrai_faux, glisser_deposer
+  // Pour type 'ordre' : ordre correct des options (ex: [2,0,1] signifie options[2] en premier)
+  final List<int> correctOrder;
+  final String type; // qcm, vrai_faux, ordre
 
   const QuizQuestion({
     required this.id,
     required this.question,
     required this.options,
     required this.correctIndex,
+    this.correctOrder = const [],
     required this.type,
   });
 
@@ -117,7 +120,18 @@ class QuizQuestion {
       question: data['question'] ?? '',
       options: List<String>.from(data['options'] ?? []),
       correctIndex: data['correct_index'] ?? 0,
+      correctOrder: data['correct_order'] != null
+          ? List<int>.from(data['correct_order'])
+          : [],
       type: data['type'] ?? 'qcm',
     );
+  }
+
+  bool isOrderCorrect(List<int> userOrder) {
+    if (correctOrder.isEmpty || userOrder.length != correctOrder.length) return false;
+    for (int i = 0; i < correctOrder.length; i++) {
+      if (userOrder[i] != correctOrder[i]) return false;
+    }
+    return true;
   }
 }

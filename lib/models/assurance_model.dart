@@ -47,6 +47,7 @@ class ContratAssuranceModel {
   final DateTime dateDebut;
   final double primeMensuelle;
   final String zoneRisque;
+  final List<String> docsUrl;
 
   const ContratAssuranceModel({
     required this.id,
@@ -57,6 +58,7 @@ class ContratAssuranceModel {
     required this.dateDebut,
     required this.primeMensuelle,
     required this.zoneRisque,
+    this.docsUrl = const [],
   });
 
   factory ContratAssuranceModel.fromFirestore(Map<String, dynamic> data, String id) {
@@ -78,6 +80,7 @@ class ContratAssuranceModel {
       dateDebut: dateDebut,
       primeMensuelle: (data['prime_mensuelle'] ?? 0).toDouble(),
       zoneRisque: data['zone_risque'] ?? '',
+      docsUrl: List<String>.from(data['docs_url'] ?? []),
     );
   }
 }

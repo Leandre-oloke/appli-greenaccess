@@ -102,6 +102,19 @@ class _ContratCard extends StatelessWidget {
         StatutContrat.sinistre => 'Sinistre déclaré',
       };
 
+  /// Les contrats durent 12 mois par défaut.
+  DateTime get _dateExpiration => DateTime(
+        contrat.dateDebut.year,
+        contrat.dateDebut.month + 12,
+        contrat.dateDebut.day,
+      );
+
+  int get _joursRestants =>
+      _dateExpiration.difference(DateTime.now()).inDays;
+
+  bool get _expireBientot =>
+      contrat.statut == StatutContrat.actif && _joursRestants <= 30 && _joursRestants > 0;
+
   @override
   Widget build(BuildContext context) {
     final color = _statutColor();
@@ -109,6 +122,25 @@ class _ContratCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       child: Column(
         children: [
+          if (_expireBientot)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.12),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.timer_outlined, size: 15, color: AppColors.warning),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Expire dans $_joursRestants jour${_joursRestants > 1 ? 's' : ''} — pensez à renouveler',
+                    style: const TextStyle(fontSize: 12, color: AppColors.warning, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+            ),
           ListTile(
             leading: CircleAvatar(
               backgroundColor: color.withValues(alpha: 0.15),
@@ -139,7 +171,7 @@ class _ContratCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 if (contrat.statut == StatutContrat.actif)
                   OutlinedButton.icon(
-                    onPressed: () => _declarerSinistre(context),
+                    onPressed: () => context.push(AppRoutes.sinistreForm(contrat.id)),
                     icon: const Icon(Icons.warning_amber_outlined, size: 16),
                     label: const Text('Déclarer sinistre', style: TextStyle(fontSize: 12)),
                     style: OutlinedButton.styleFrom(
@@ -159,29 +191,7 @@ class _ContratCard extends StatelessWidget {
   String _fmtDate(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
-  void _declarerSinistre(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Déclarer un sinistre'),
-        content: const Text(
-          'Votre déclaration sera transmise à votre assureur. '
-          'Un agent prendra contact avec vous sous 48h.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Annuler'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx),
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
-            child: const Text('Confirmer'),
-          ),
-        ],
-      ),
-    );
-  }
+
 }
 
 class _InfoBadge extends StatelessWidget {

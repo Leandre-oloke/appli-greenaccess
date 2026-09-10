@@ -1,5 +1,6 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/user_model.dart';
 import '../../viewmodels/auth_viewmodel.dart';
@@ -17,6 +18,7 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
   final _telCtrl = TextEditingController();
   final _regionCtrl = TextEditingController();
   bool _editing = false;
+  bool _gpsLoading = false;
   String _pays = 'Sénégal';
   String _secteur = 'Agriculture';
 
@@ -43,6 +45,53 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
     _regionCtrl.text = user.region;
     _pays = _paysList.contains(user.pays) ? user.pays : _paysList.first;
     _secteur = _secteursList.contains(user.secteur) ? user.secteur : _secteursList.first;
+  }
+
+  Future<void> _detectLocation() async {
+    setState(() => _gpsLoading = true);
+    try {
+      final permission = await Geolocator.checkPermission();
+      LocationPermission granted = permission;
+      if (permission == LocationPermission.denied) {
+        granted = await Geolocator.requestPermission();
+      }
+      if (granted == LocationPermission.denied ||
+          granted == LocationPermission.deniedForever) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Permission de localisation refusée.')),
+          );
+        }
+        return;
+      }
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
+      );
+      // Conversion coordonnées → zone UEMOA approximative
+      final zone = _coordsToZone(pos.latitude, pos.longitude);
+      setState(() => _regionCtrl.text = zone);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur GPS : $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _gpsLoading = false);
+    }
+  }
+
+  /// Mappe des coordonnées GPS vers une zone géographique UEMOA approximative.
+  String _coordsToZone(double lat, double lng) {
+    if (lat >= 12.0 && lat <= 14.8 && lng >= -17.5 && lng <= -11.3) return 'Sénégal';
+    if (lat >= 6.0  && lat <= 12.5 && lng >= 1.0   && lng <= 3.8)   return 'Bénin';
+    if (lat >= 4.0  && lat <= 10.7 && lng >= -8.6  && lng <= -2.5)  return 'Côte d\'Ivoire';
+    if (lat >= 11.0 && lat <= 15.0 && lng >= -4.2  && lng <= 4.3)   return 'Burkina Faso';
+    if (lat >= 11.0 && lat <= 25.0 && lng >= -4.3  && lng <= 4.3)   return 'Mali';
+    if (lat >= 13.0 && lat <= 23.5 && lng >= 0.2   && lng <= 16.0)  return 'Niger';
+    if (lat >= 6.0  && lat <= 11.2 && lng >= 0.0   && lng <= 1.8)   return 'Togo';
+    if (lat >= 4.0  && lat <= 12.7 && lng >= -15.1 && lng <= -7.6)  return 'Guinée';
+    return 'Lat ${lat.toStringAsFixed(2)}, Lng ${lng.toStringAsFixed(2)}';
   }
 
   Future<void> _save() async {
@@ -143,11 +192,40 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
                 onChanged: (v) => setState(() => _pays = v!),
               ),
               const SizedBox(height: 12),
-              _field(
-                label: 'Région / Ville',
-                ctrl: _regionCtrl,
-                icon: Icons.location_on_outlined,
-                enabled: _editing,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: _field(
+                      label: 'Région / Ville',
+                      ctrl: _regionCtrl,
+                      icon: Icons.location_on_outlined,
+                      enabled: _editing,
+                    ),
+                  ),
+                  if (_editing) ...[
+                    const SizedBox(width: 8),
+                    Tooltip(
+                      message: 'Détecter ma position GPS',
+                      child: SizedBox(
+                        height: 56,
+                        child: OutlinedButton(
+                          onPressed: _gpsLoading ? null : _detectLocation,
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                          ),
+                          child: _gpsLoading
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.my_location_outlined),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
               const SizedBox(height: 12),
               _dropdown(

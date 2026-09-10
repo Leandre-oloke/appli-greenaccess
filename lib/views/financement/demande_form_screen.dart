@@ -110,9 +110,20 @@ class _DemandeFormScreenState extends ConsumerState<DemandeFormScreen> {
   Widget build(BuildContext context) {
     final uid = ref.watch(authViewModelProvider).user?.id ?? '';
     final scoreState = ref.watch(scoringViewModelProvider(uid));
+
+    // Pendant le chargement du score, on attend avant de bloquer
+    if (scoreState.isCalculating) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Demande de financement')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     final score = scoreState.currentScore?.scoreTotal ?? 0;
 
-    if (score < 60) {
+    // Si aucun score n'a encore été fait (currentScore == null), on laisse passer
+    // pour éviter de bloquer un utilisateur qui n'a pas encore fait son évaluation.
+    if (scoreState.currentScore != null && score < 60) {
       return Scaffold(
         appBar: AppBar(title: const Text('Demande de financement')),
         body: _ScoreBlocked(score: score),

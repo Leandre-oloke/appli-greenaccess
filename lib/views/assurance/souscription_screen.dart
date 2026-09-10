@@ -1,4 +1,6 @@
-﻿import 'package:flutter/material.dart';
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/constants/app_colors.dart';
@@ -22,6 +24,12 @@ class _SouscriptionScreenState extends ConsumerState<SouscriptionScreen> {
   double _valeur = 500000;
   bool _confirmed = false;
 
+  // Step 4 — documents
+  File? _pieceIdentite;
+  File? _preuveActivite;
+  bool _uploading = false;
+
+  static const _totalSteps = 4;
   static const _zones = ['Sénégal', 'Bénin', 'Côte d\'Ivoire', 'Mali', 'Burkina Faso', 'Niger'];
   static const _risques = ['secheresse', 'inondation', 'chaleur', 'multirisque'];
   static const _risqueLabels = {
@@ -35,17 +43,18 @@ class _SouscriptionScreenState extends ConsumerState<SouscriptionScreen> {
   Widget build(BuildContext context) {
     final uid = ref.watch(authViewModelProvider).user?.id ?? '';
     final state = ref.watch(assuranceViewModelProvider(uid));
+    final isLastStep = _step == _totalSteps - 1;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Souscription — Étape ${_step + 1}/3'),
+        title: Text('Souscription — Étape ${_step + 1}/$_totalSteps'),
         leading: BackButton(onPressed: () {
           if (_step > 0) { setState(() => _step--); } else { context.pop(); }
         }),
       ),
       body: Column(
         children: [
-          _ProgressBar(step: _step),
+          _ProgressBar(step: _step, total: _totalSteps),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(20),
@@ -54,11 +63,11 @@ class _SouscriptionScreenState extends ConsumerState<SouscriptionScreen> {
           ),
           _NavBar(
             step: _step,
+            total: _totalSteps,
             canNext: _stepValid(),
-            canSubmit: _confirmed && !state.isLoading,
-            isLoading: state.isLoading,
+            isLoading: state.isLoading || _uploading,
             onNext: () => setState(() => _step++),
-            onSubmit: () => _submit(uid),
+            onSubmit: isLastStep ? () => _submit(uid, state) : null,
           ),
         ],
       ),
@@ -68,20 +77,47 @@ class _SouscriptionScreenState extends ConsumerState<SouscriptionScreen> {
   bool _stepValid() {
     if (_step == 0) return _zone.isNotEmpty && _typeRisque.isNotEmpty;
     if (_step == 1) return _typeCulture.trim().isNotEmpty;
-    return _confirmed;
+    if (_step == 2) return _confirmed;
+    return true; // step 3 (documents) : facultatif
   }
 
-  Future<void> _submit(String uid) async {
-    final simulation = ref.read(assuranceViewModelProvider(uid)).simulation;
-    await ref.read(assuranceViewModelProvider(uid).notifier).soumettreSouscription({
-      'zone_risque': _zone,
-      'produit_id': simulation?.produitRecommande.id ?? 'default',
-      'prime_mensuelle': simulation?.primeEstimee ?? 5000,
-      'type_culture': _typeCulture,
-      'superficie': _superficie,
-      'assureur_id': 'ASSUREUR_01',
-      'date_debut': DateTime.now(),
-    });
+  Future<void> _submit(String uid, AssuranceState state) async {
+    // Étape 1 : créer le contrat si pas encore fait
+    if (state.contratActif == null) {
+      final simulation = state.simulation;
+      await ref.read(assuranceViewModelProvider(uid).notifier).soumettreSouscription({
+        'zone_risque': _zone,
+        'produit_id': simulation?.produitRecommande.id ?? 'default',
+        'prime_mensuelle': simulation?.primeEstimee ?? 5000,
+        'type_culture': _typeCulture,
+        'superficie': _superficie,
+        'assureur_id': 'ASSUREUR_01',
+        'date_debut': DateTime.now(),
+      });
+    }
+
+    // Étape 2 : upload documents si sélectionnés
+    final contratId = ref.read(assuranceViewModelProvider(uid)).contratActif?.id;
+    if (contratId != null && (_pieceIdentite != null || _preuveActivite != null)) {
+      setState(() => _uploading = true);
+      final vm = ref.read(assuranceViewModelProvider(uid).notifier);
+      await Future.wait([
+        if (_pieceIdentite != null)
+          vm.uploadDocument(
+            contratId: contratId,
+            file: _pieceIdentite!,
+            nomDocument: 'piece_identite',
+          ),
+        if (_preuveActivite != null)
+          vm.uploadDocument(
+            contratId: contratId,
+            file: _preuveActivite!,
+            nomDocument: 'preuve_activite',
+          ),
+      ]);
+      setState(() => _uploading = false);
+    }
+
     if (mounted) context.go(AppRoutes.mesContrats);
   }
 
@@ -99,12 +135,18 @@ class _SouscriptionScreenState extends ConsumerState<SouscriptionScreen> {
           onSuperficie: (v) => setState(() => _superficie = v),
           onValeur: (v) => setState(() => _valeur = v),
         ),
-      _ => _StepConfirmation(
+      2 => _StepConfirmation(
           zone: _zone, typeRisque: _risqueLabels[_typeRisque] ?? _typeRisque,
           typeCulture: _typeCulture, superficie: _superficie, valeur: _valeur,
           simulation: state.simulation,
           confirmed: _confirmed,
           onConfirm: (v) => setState(() => _confirmed = v ?? false),
+        ),
+      _ => _StepDocuments(
+          pieceIdentite: _pieceIdentite,
+          preuveActivite: _preuveActivite,
+          onPieceIdentite: (f) => setState(() => _pieceIdentite = f),
+          onPreuveActivite: (f) => setState(() => _preuveActivite = f),
         ),
     };
   }
@@ -112,12 +154,13 @@ class _SouscriptionScreenState extends ConsumerState<SouscriptionScreen> {
 
 class _ProgressBar extends StatelessWidget {
   final int step;
-  const _ProgressBar({required this.step});
+  final int total;
+  const _ProgressBar({required this.step, required this.total});
 
   @override
   Widget build(BuildContext context) {
     return LinearProgressIndicator(
-      value: (step + 1) / 3,
+      value: (step + 1) / total,
       backgroundColor: AppColors.divider,
       valueColor: const AlwaysStoppedAnimation(Color(0xFF6A1B9A)),
       minHeight: 6,
@@ -127,24 +170,49 @@ class _ProgressBar extends StatelessWidget {
 
 class _NavBar extends StatelessWidget {
   final int step;
-  final bool canNext, canSubmit, isLoading;
-  final VoidCallback onNext, onSubmit;
+  final int total;
+  final bool canNext;
+  final bool isLoading;
+  final VoidCallback onNext;
+  final VoidCallback? onSubmit;
   const _NavBar({
-    required this.step, required this.canNext, required this.canSubmit,
-    required this.isLoading, required this.onNext, required this.onSubmit,
+    required this.step,
+    required this.total,
+    required this.canNext,
+    required this.isLoading,
+    required this.onNext,
+    required this.onSubmit,
   });
+
+  bool get _isLastStep => step == total - 1;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       color: AppColors.surface,
-      child: ElevatedButton(
-        onPressed: step < 2 ? (canNext ? onNext : null) : (canSubmit ? onSubmit : null),
-        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6A1B9A)),
-        child: isLoading
-            ? const CircularProgressIndicator(color: Colors.white)
-            : Text(step < 2 ? 'Suivant' : 'Confirmer la souscription'),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_isLastStep)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                'Documents facultatifs — vous pouvez les ajouter plus tard',
+                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ElevatedButton(
+            onPressed: isLoading
+                ? null
+                : (_isLastStep ? onSubmit : (canNext ? onNext : null)),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6A1B9A)),
+            child: isLoading
+                ? const CircularProgressIndicator(color: Colors.white)
+                : Text(_isLastStep ? 'Terminer la souscription' : 'Suivant'),
+          ),
+        ],
       ),
     );
   }
@@ -287,6 +355,158 @@ class _StepConfirmation extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _StepDocuments extends StatelessWidget {
+  final File? pieceIdentite;
+  final File? preuveActivite;
+  final void Function(File) onPieceIdentite;
+  final void Function(File) onPreuveActivite;
+
+  const _StepDocuments({
+    required this.pieceIdentite,
+    required this.preuveActivite,
+    required this.onPieceIdentite,
+    required this.onPreuveActivite,
+  });
+
+  Future<void> _pickFile(BuildContext context, void Function(File) onPicked) async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+    );
+    if (result != null && result.files.single.path != null) {
+      onPicked(File(result.files.single.path!));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Documents justificatifs',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 6),
+        const Text(
+          'Ces documents sont facultatifs et peuvent être ajoutés plus tard depuis votre espace contrats.',
+          style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 24),
+        _DocTile(
+          label: 'Pièce d\'identité',
+          subtitle: 'CNI, passeport ou tout document officiel',
+          icon: Icons.badge_outlined,
+          file: pieceIdentite,
+          onPick: () => _pickFile(context, onPieceIdentite),
+        ),
+        const SizedBox(height: 12),
+        _DocTile(
+          label: 'Preuves d\'activité',
+          subtitle: 'Photos, registre ou attestation d\'exploitation',
+          icon: Icons.agriculture_outlined,
+          file: preuveActivite,
+          onPick: () => _pickFile(context, onPreuveActivite),
+        ),
+        const SizedBox(height: 20),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.info.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.info.withValues(alpha: 0.3)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: const [
+              Icon(Icons.info_outline, color: AppColors.info, size: 18),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Formats acceptés : PDF, JPG, PNG. Taille max : 5 Mo par document. Vos documents sont stockés de façon sécurisée.',
+                  style: TextStyle(fontSize: 12, color: AppColors.info),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DocTile extends StatelessWidget {
+  final String label, subtitle;
+  final IconData icon;
+  final File? file;
+  final VoidCallback onPick;
+
+  const _DocTile({
+    required this.label,
+    required this.subtitle,
+    required this.icon,
+    required this.file,
+    required this.onPick,
+  });
+
+  String get _fileName => file?.path.split(Platform.pathSeparator).last ?? '';
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = file != null;
+    return InkWell(
+      onTap: onPick,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: selected ? AppColors.success : AppColors.divider,
+            width: selected ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(12),
+          color: selected ? AppColors.success.withValues(alpha: 0.05) : null,
+        ),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 22,
+              backgroundColor: (selected ? AppColors.success : const Color(0xFF6A1B9A))
+                  .withValues(alpha: 0.12),
+              child: Icon(
+                selected ? Icons.check_circle_outline : icon,
+                color: selected ? AppColors.success : const Color(0xFF6A1B9A),
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                  const SizedBox(height: 2),
+                  Text(
+                    selected ? _fileName : subtitle,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: selected ? AppColors.success : AppColors.textSecondary,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              selected ? Icons.edit_outlined : Icons.upload_file_outlined,
+              color: selected ? AppColors.success : AppColors.textSecondary,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

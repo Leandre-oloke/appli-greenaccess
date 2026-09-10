@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/demande_financement_model.dart';
 import '../../viewmodels/admin_viewmodel.dart';
@@ -20,6 +23,99 @@ class _AdminDemandesScreenState extends ConsumerState<AdminDemandesScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(adminViewModelProvider.notifier).loadDemandes();
     });
+  }
+
+  Future<void> _exportPdf(List<DemandeFinancementModel> demandes) async {
+    final fmt = NumberFormat('#,##0', 'fr_FR');
+    final fmtDate = DateFormat('dd/MM/yyyy');
+    final now = fmtDate.format(DateTime.now());
+
+    final doc = pw.Document();
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4.landscape,
+        margin: const pw.EdgeInsets.all(32),
+        header: (_) => pw.Container(
+          padding: const pw.EdgeInsets.only(bottom: 8),
+          decoration: const pw.BoxDecoration(
+            border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey400)),
+          ),
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text('GreenAccess — Export Demandes de financement',
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 13, color: PdfColor.fromInt(0xFF2E7D32))),
+              pw.Text('Généré le $now', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey600)),
+            ],
+          ),
+        ),
+        build: (_) => [
+          pw.SizedBox(height: 12),
+          pw.Table(
+            border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+            columnWidths: {
+              0: const pw.FlexColumnWidth(2.5),
+              1: const pw.FlexColumnWidth(1.5),
+              2: const pw.FlexColumnWidth(1.2),
+              3: const pw.FlexColumnWidth(1.8),
+              4: const pw.FlexColumnWidth(1.2),
+              5: const pw.FlexColumnWidth(1),
+            },
+            children: [
+              // En-tête
+              pw.TableRow(
+                decoration: pw.BoxDecoration(color: PdfColor.fromInt(0xFF2E7D32)),
+                children: [
+                  _cell('Type de projet', isHeader: true),
+                  _cell('Montant (FCFA)', isHeader: true),
+                  _cell('Statut', isHeader: true),
+                  _cell('Secteur / Pays', isHeader: true),
+                  _cell('Score ESG', isHeader: true),
+                  _cell('Soumis le', isHeader: true),
+                ],
+              ),
+              // Lignes
+              ...demandes.asMap().entries.map((e) {
+                final d = e.value;
+                final even = e.key.isEven;
+                return pw.TableRow(
+                  decoration: even ? const pw.BoxDecoration(color: PdfColors.grey50) : null,
+                  children: [
+                    _cell(d.typeProjet),
+                    _cell(fmt.format(d.montant)),
+                    _cell(_statutLabel(d.statut)),
+                    _cell('${d.secteur} · ${d.pays}'),
+                    _cell('${d.scoreEligibilite.round()}/100'),
+                    _cell(fmtDate.format(d.dateSoumission)),
+                  ],
+                );
+              }),
+            ],
+          ),
+          pw.SizedBox(height: 12),
+          pw.Text('Total : ${demandes.length} demande(s)',
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11)),
+        ],
+      ),
+    );
+    await Printing.sharePdf(
+      bytes: await doc.save(),
+      filename: 'demandes_financement_$now.pdf'.replaceAll('/', '-'),
+    );
+  }
+
+  static pw.Widget _cell(String text, {bool isHeader = false}) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+      child: pw.Text(
+        text,
+        style: pw.TextStyle(
+          fontSize: isHeader ? 10 : 9,
+          fontWeight: isHeader ? pw.FontWeight.bold : null,
+          color: isHeader ? PdfColors.white : PdfColors.black,
+        ),
+      ),
+    );
   }
 
   @override
@@ -44,6 +140,13 @@ class _AdminDemandesScreenState extends ConsumerState<AdminDemandesScreen> {
         title: Text('Demandes de financement (${state.demandes.length})'),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            tooltip: 'Exporter en PDF',
+            onPressed: demandes.isEmpty ? null : () => _exportPdf(demandes),
+          ),
+        ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
           child: SingleChildScrollView(
@@ -65,17 +168,63 @@ class _AdminDemandesScreenState extends ConsumerState<AdminDemandesScreen> {
       ),
       body: state.isLoading
           ? const Center(child: CircularProgressIndicator())
-          : demandes.isEmpty
-              ? const Center(child: Text('Aucune demande'))
-              : ListView.builder(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: demandes.length,
-                  itemBuilder: (context, i) => _DemandeCard(
-                    demande: demandes[i],
-                    onApprouver: () => ref.read(adminViewModelProvider.notifier).approuverDemande(demandes[i].id),
-                    onRejeter: () => _showRejetDialog(context, demandes[i].id),
+          : Column(
+              children: [
+                if (state.error != null)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    color: AppColors.error.withValues(alpha: 0.1),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.warning_amber_rounded, color: AppColors.error, size: 18),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            state.error!,
+                            style: const TextStyle(color: AppColors.error, fontSize: 13),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => ref.read(adminViewModelProvider.notifier).loadDemandes(),
+                          child: const Text('Réessayer'),
+                        ),
+                      ],
+                    ),
                   ),
+                Expanded(
+                  child: demandes.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.account_balance_outlined, size: 64, color: AppColors.textSecondary),
+                              const SizedBox(height: 12),
+                              const Text('Aucune demande', style: TextStyle(color: AppColors.textSecondary)),
+                              if (state.error == null)
+                                const Padding(
+                                  padding: EdgeInsets.only(top: 8),
+                                  child: Text(
+                                    'Les demandes soumises par les utilisateurs\napparaîtront ici.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.all(12),
+                          itemCount: demandes.length,
+                          itemBuilder: (context, i) => _DemandeCard(
+                            demande: demandes[i],
+                            onApprouver: () => ref.read(adminViewModelProvider.notifier).approuverDemande(demandes[i].id),
+                            onRejeter: () => _showRejetDialog(context, demandes[i].id),
+                          ),
+                        ),
                 ),
+              ],
+            ),
     );
   }
 

@@ -11,21 +11,86 @@ class AdminRepository {
 
   // ── Stats ──────────────────────────────────────────────────────────────────
 
-  Future<Map<String, int>> getStats() async {
+  /// Données agrégées pour l'écran Analytics admin.
+  Future<Map<String, dynamic>> getAnalytics() async {
     final results = await Future.wait([
-      _db.collection('users').count().get(),
-      _db.collection('courses').count().get(),
-      _db.collection('demandes_financement').count().get(),
-      _db.collection('contrats_assurance').count().get(),
-      _db.collection('demandes_financement')
-          .where('statut', isEqualTo: 'soumis').count().get(),
+      // Scores climat — moyenne et répartition par niveau
+      _db.collection('scores_climat').get(),
+      // Demandes par statut
+      _db.collection('demandes_financement').get(),
+      // Contrats actifs
+      _db.collection('contrats_assurance').where('statut', isEqualTo: 'actif').count().get(),
+      // Formations complétées (progress docs)
+      _db.collectionGroup('progress').where('statut', isEqualTo: 'TERMINE').count().get(),
+      // Utilisateurs par rôle
+      _db.collection('users').get(),
+    ]);
+
+    final scoresDocs = (results[0] as QuerySnapshot).docs;
+    double scoreMoyen = 0;
+    final Map<String, int> scoresParNiveau = {'excellent': 0, 'bon': 0, 'intermediaire': 0, 'insuffisant': 0};
+    if (scoresDocs.isNotEmpty) {
+      double total = 0;
+      for (final doc in scoresDocs) {
+        final d = doc.data() as Map<String, dynamic>;
+        total += (d['scoreTotal'] as num? ?? 0).toDouble();
+        final niveau = d['niveau'] as String? ?? 'insuffisant';
+        scoresParNiveau[niveau] = (scoresParNiveau[niveau] ?? 0) + 1;
+      }
+      scoreMoyen = total / scoresDocs.length;
+    }
+
+    final demandesDocs = (results[1] as QuerySnapshot).docs;
+    final Map<String, int> demandesParStatut = {};
+    for (final doc in demandesDocs) {
+      final statut = (doc.data() as Map<String, dynamic>)['statut'] as String? ?? 'brouillon';
+      demandesParStatut[statut] = (demandesParStatut[statut] ?? 0) + 1;
+    }
+
+    final usersDocs = (results[4] as QuerySnapshot).docs;
+    final Map<String, int> usersParRole = {};
+    for (final doc in usersDocs) {
+      final role = (doc.data() as Map<String, dynamic>)['role'] as String? ?? 'user';
+      usersParRole[role] = (usersParRole[role] ?? 0) + 1;
+    }
+
+    return {
+      'scoreMoyen': scoreMoyen,
+      'totalScores': scoresDocs.length,
+      'scoresParNiveau': scoresParNiveau,
+      'demandesParStatut': demandesParStatut,
+      'contratsActifs': (results[2] as AggregateQuerySnapshot).count ?? 0,
+      'formationsCompletees': (results[3] as AggregateQuerySnapshot).count ?? 0,
+      'usersParRole': usersParRole,
+    };
+  }
+
+  Future<Map<String, int>> getStats() async {
+    // Chaque comptage échoue indépendamment — on ne bloque pas le dashboard entier.
+    Future<int> count(Query q) async {
+      try {
+        final snap = await q.count().get();
+        return snap.count ?? 0;
+      } catch (_) {
+        return 0;
+      }
+    }
+
+    final results = await Future.wait([
+      count(_db.collection('users')),
+      count(_db.collection('courses')),
+      count(_db.collection('demandes_financement')),
+      count(_db.collection('contrats_assurance')),
+      count(_db.collection('sinistres')),
+      count(_db.collection('contrats_assurance').where('statut', isEqualTo: 'soumis')),
     ]);
     return {
-      'users':    results[0].count ?? 0,
-      'courses':  results[1].count ?? 0,
-      'demandes': results[2].count ?? 0,
-      'contrats': results[3].count ?? 0,
-      'enAttente': results[4].count ?? 0,
+      'users':              results[0],
+      'courses':            results[1],
+      'demandes':           results[2],
+      'contrats':           results[3],
+      'sinistres':          results[4],
+      'contratsAVerifier':  results[5],
     };
   }
 
