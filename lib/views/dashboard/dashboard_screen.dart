@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/providers/theme_mode_provider.dart';
 import '../../models/score_climat_model.dart';
 import '../../routes.dart';
 import '../../ui/ui.dart';
@@ -89,18 +90,27 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 }
 
-class _Header extends StatelessWidget {
+class _Header extends ConsumerWidget {
   const _Header({required this.name, required this.unread});
   final String name;
   final int unread;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final date = DateFormat("EEEE d MMMM", 'fr').format(DateTime.now());
+    final dark = Theme.of(context).brightness == Brightness.dark;
     return GaGradientHeader(
       title: 'Bonjour, ${name.split(' ').first}',
       subtitle: '${date[0].toUpperCase()}${date.substring(1)}',
       actions: [
+        IconButton(
+          tooltip: 'Thème',
+          onPressed: () => ref.read(themeModeProvider.notifier).cycle(),
+          icon: Icon(
+            dark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+            color: Colors.white,
+          ),
+        ),
         Stack(
           clipBehavior: Clip.none,
           children: [
