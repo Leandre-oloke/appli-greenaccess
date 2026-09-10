@@ -45,7 +45,7 @@ class DefaultFirebaseOptions {
   // Vos applications → Web) et reportez ici `apiKey` et `appId`.
   static const FirebaseOptions web = FirebaseOptions(
     apiKey: 'AIzaSyDYx9XiqjJxVSndd5XzXp18u1T85B_srrU',
-    appId: 'REMPLACER_PAR_APP_ID_WEB', // format : 1:590719492442:web:xxxxxxxxxxxx
+    appId: '1:590719492442:web:0b0252fe16fa42c8209363',
     messagingSenderId: '590719492442',
     projectId: 'greenaccess-16d25',
     authDomain: 'greenaccess-16d25.firebaseapp.com',
