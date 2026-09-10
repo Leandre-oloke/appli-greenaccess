@@ -1,0 +1,11 @@
+{
+  "name": "GreenAccess",
+  "short_name": "GreenAccess",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#2E7D32",
+  "description": "Plateforme mobile de micro-financement vert, d'éducation climatique et d'assurance inclusive.",
+  "orientation": "portrait-primary",
+  "prefer_related_applications": false
+}

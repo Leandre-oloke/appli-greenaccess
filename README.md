@@ -154,6 +154,38 @@ firebase emulators:start        # ou : firebase deploy --only functions
 
 ---
 
+## 6bis. Exécution dans un GitHub Codespace (Flutter Web)
+
+Le dépôt contient un `.devcontainer/` : le Codespace installe automatiquement Flutter,
+Node 20 et la Firebase CLI, puis lance `flutter pub get` et `npm install` sur `functions/`.
+
+Cible : **l'app en Web** (Android/iOS impossibles sans écran ni Mac). Les notifications
+push FCM sont désactivées sur le Web.
+
+**Étape manuelle unique — enregistrer une app Web Firebase :**
+Console Firebase → projet `greenaccess-16d25` → Paramètres du projet → *Vos applications*
+→ Ajouter une application → Web. Reporter `apiKey` et `appId` dans le bloc `web` de
+`lib/firebase_options.dart` (l'app lève une erreur explicite tant que ce n'est pas fait).
+
+```bash
+# 1. Backend — au choix :
+#    a) rien à faire : l'app tape sur le vrai projet greenaccess-16d25
+#    b) émulateurs locaux :
+firebase emulators:start          # UI sur le port 4000
+
+# 2. App Web
+flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080
+#    ... ou contre les émulateurs :
+flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080 --dart-define=USE_EMULATOR=true
+```
+
+Codespaces forwarde le port **8080** (app) et **4000** (UI émulateurs) — les ouvrir depuis
+l'onglet *Ports*.
+
+Le dossier `web/` est minimal ; pour le régénérer complètement : `rm -rf web && flutter create --platforms=web .`
+
+---
+
 ## 7. Tests
 
 ```bash

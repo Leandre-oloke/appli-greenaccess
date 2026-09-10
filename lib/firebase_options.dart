@@ -8,10 +8,14 @@ import 'package:flutter/foundation.dart'
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
-      throw UnsupportedError(
-        'DefaultFirebaseOptions n\'est pas configuré pour le Web. '
-        'Ajoutez votre app Web dans la console Firebase.',
-      );
+      if (web.appId.startsWith('REMPLACER')) {
+        throw UnsupportedError(
+          'Config Web Firebase manquante. Dans la console Firebase : '
+          'Paramètres du projet → Vos applications → Ajouter une app Web, '
+          'puis reportez apiKey et appId dans `web` ci-dessous (lib/firebase_options.dart).',
+        );
+      }
+      return web;
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
@@ -33,6 +37,18 @@ class DefaultFirebaseOptions {
     appId: '1:590719492442:android:7cf4b981965ba918209363',
     messagingSenderId: '590719492442',
     projectId: 'greenaccess-16d25',
+    storageBucket: 'greenaccess-16d25.firebasestorage.app',
+  );
+
+  // Config Web — nécessaire pour exécuter l'app dans un navigateur (Codespaces).
+  // Enregistrez une app Web dans la console Firebase (Paramètres du projet →
+  // Vos applications → Web) et reportez ici `apiKey` et `appId`.
+  static const FirebaseOptions web = FirebaseOptions(
+    apiKey: 'AIzaSyDYx9XiqjJxVSndd5XzXp18u1T85B_srrU',
+    appId: 'REMPLACER_PAR_APP_ID_WEB', // format : 1:590719492442:web:xxxxxxxxxxxx
+    messagingSenderId: '590719492442',
+    projectId: 'greenaccess-16d25',
+    authDomain: 'greenaccess-16d25.firebaseapp.com',
     storageBucket: 'greenaccess-16d25.firebasestorage.app',
   );
 }
