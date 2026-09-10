@@ -1,5 +1,6 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -10,6 +11,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/providers/prefs_provider.dart';
+import 'core/providers/theme_mode_provider.dart';
 import 'theme.dart';
 import 'routes.dart';
 import 'firebase_options.dart';
@@ -27,6 +29,7 @@ Future<void> _fcmBackgroundHandler(RemoteMessage message) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (kDebugMode) Animate.restartOnHotReload = true;
   await initializeDateFormatting('fr', null);
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
@@ -107,9 +110,12 @@ class _GreenAccessAppState extends ConsumerState<GreenAccessApp> {
   @override
   Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
+    final themeMode = ref.watch(themeModeProvider);
     return MaterialApp.router(
       title: 'GreenAccess',
       theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: themeMode,
       routerConfig: router,
       debugShowCheckedModeBanner: false,
     );

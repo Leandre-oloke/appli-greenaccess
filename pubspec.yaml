@@ -27,6 +27,17 @@ dependencies:
   fl_chart: ^0.69.0
   percent_indicator: ^4.2.3
 
+  # Design system — refonte visuelle « Organic Fintech »
+  flutter_animate: ^4.5.0      # entrées en cascade, micro-animations, shimmer
+  animations: ^2.0.11          # transitions shared-axis / fade-through (équipe Flutter)
+  lottie: ^3.1.3               # micro-délices (confettis badge/score, états vides)
+  flutter_svg: ^2.0.10         # illustrations vectorielles
+  easy_stepper: ^0.8.5+1       # rail d'étapes du GaStepper
+
+  # Cartographie — déclaré maintenant, importé en Phase 4 (module Assurance)
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+
   # Local Storage
   shared_preferences: ^2.3.2
 
@@ -63,3 +74,11 @@ flutter:
     - assets/icons/
     - assets/animations/
     - assets/data/
+  fonts:
+    # Polices variables (axe wght) — Flutter résout les graisses via l'axe.
+    - family: Sora
+      fonts:
+        - asset: assets/fonts/Sora.ttf
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter.ttf
