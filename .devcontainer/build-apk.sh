@@ -44,10 +44,35 @@ if [ ! -f android/app/google-services.json ]; then
   exit 3
 fi
 
+echo "▶ Libération mémoire (arrêt du serveur web éventuel)…"
+pkill -f "flutter run" 2>/dev/null || true
+pkill -f "frontend_server" 2>/dev/null || true
+sleep 2
+
+echo "▶ Ajustement mémoire Gradle pour le Codespace (8 Go)…"
+# gradle.properties du repo est calibré pour une machine de dev (Xmx8G) → OOM ici.
+cp android/gradle.properties /tmp/gradle.properties.bak
+cat > android/gradle.properties <<'PROPS'
+org.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError
+org.gradle.workers.max=2
+org.gradle.daemon=false
+android.useAndroidX=true
+android.enableJetifier=true
+kotlin.incremental=false
+kotlin.daemon.jvmargs=-Xmx1536m
+PROPS
+restore_props() { mv /tmp/gradle.properties.bak android/gradle.properties 2>/dev/null || true; }
+trap restore_props EXIT
+
 echo "▶ flutter build apk --release…"
 flutter pub get
-flutter build apk --release
+BUILD_MODE=release
+if ! flutter build apk --release; then
+  echo "⚠ release a échoué — nouvelle tentative en --debug…"
+  BUILD_MODE=debug
+  flutter build apk --debug
+fi
 
-APK="build/app/outputs/flutter-apk/app-release.apk"
+APK="build/app/outputs/flutter-apk/app-$BUILD_MODE.apk"
 ls -la "$APK"
-echo "✅ APK : $(pwd)/$APK"
+echo "✅ APK ($BUILD_MODE) : $(pwd)/$APK"
