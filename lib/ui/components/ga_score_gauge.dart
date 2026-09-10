@@ -3,13 +3,13 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../models/score_climat_model.dart';
-
-double _rad(double degrees) => degrees * math.pi / 180.0;
 import '../theme/ga_theme_extensions.dart';
 import '../tokens/ga_motion.dart';
 import '../tokens/ga_score_scale.dart';
 import '../tokens/ga_typography.dart';
 import 'ga_badge_pill.dart';
+
+double _rad(double degrees) => degrees * math.pi / 180.0;
 
 /// Peintre de l'arc de jauge (partagé par [GaScoreGauge] et [GaMiniGauge]).
 class _GaugePainter extends CustomPainter {

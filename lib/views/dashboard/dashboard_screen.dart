@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:percent_indicator/circular_percent_indicator.dart';
-import '../../core/constants/app_colors.dart';
-import '../../routes.dart';
+import 'package:intl/intl.dart';
+
 import '../../models/score_climat_model.dart';
+import '../../routes.dart';
+import '../../ui/ui.dart';
+import '../../viewmodels/assurance_viewmodel.dart';
 import '../../viewmodels/auth_viewmodel.dart';
-import '../../viewmodels/scoring_viewmodel.dart';
 import '../../viewmodels/formation_viewmodel.dart';
 import '../../viewmodels/notification_viewmodel.dart';
-import '../../viewmodels/assurance_viewmodel.dart';
+import '../../viewmodels/scoring_viewmodel.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -25,7 +26,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final uid = ref.read(authViewModelProvider).user?.id ?? '';
       if (uid.isEmpty) return;
-      // Chargement initial unique — gardé en vie par StatefulShellRoute.
       ref.read(scoringViewModelProvider(uid).notifier).loadLatestScore();
       ref.read(formationViewModelProvider(uid).notifier).loadCourses();
     });
@@ -33,73 +33,55 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // select évite les rebuilds sur isLoading/error de l'auth
     final user = ref.watch(authViewModelProvider.select((s) => s.user));
     if (user == null) return const SizedBox.shrink();
 
-    final scoring  = ref.watch(scoringViewModelProvider(user.id));
+    final scoring = ref.watch(scoringViewModelProvider(user.id));
     final formation = ref.watch(formationViewModelProvider(user.id));
     final unread = ref.watch(
       notificationViewModelProvider(user.id).select((s) => s.unreadCount),
     );
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Bonjour, ${user.nom.split(' ').first}'),
-        actions: [
-          Stack(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.notifications_outlined),
-                onPressed: () => context.go(AppRoutes.notifications),
-              ),
-              if (unread > 0)
-                Positioned(
-                  right: 8,
-                  top: 8,
-                  child: Container(
-                    padding: const EdgeInsets.all(2),
-                    decoration: const BoxDecoration(
-                      color: AppColors.error,
-                      shape: BoxShape.circle,
-                    ),
-                    constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                    child: Text(
-                      unread > 9 ? '9+' : '$unread',
-                      style: const TextStyle(color: Colors.white, fontSize: 10),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          IconButton(
-            icon: const Icon(Icons.person_outline),
-            onPressed: () => context.go(AppRoutes.profil),
-          ),
-        ],
-      ),
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(scoringViewModelProvider(user.id));
           ref.invalidate(formationViewModelProvider(user.id));
           await Future.wait([
-            ref.read(scoringViewModelProvider(user.id).notifier).loadLatestScore(),
-            ref.read(formationViewModelProvider(user.id).notifier).loadCourses(),
+            ref
+                .read(scoringViewModelProvider(user.id).notifier)
+                .loadLatestScore(),
+            ref
+                .read(formationViewModelProvider(user.id).notifier)
+                .loadCourses(),
           ]);
         },
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            _ScoreCard(score: scoring.currentScore),
-            const SizedBox(height: 16),
-            const _QuickActions(),
-            const SizedBox(height: 16),
-            _FormationCard(progressPercent: formation.progressPercent, xp: formation.totalXp),
-            const SizedBox(height: 16),
-            const _FinancementCard(),
-            const SizedBox(height: 16),
-            const _AssuranceCard(),
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(
+              child: _Header(name: user.nom, unread: unread),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(GaSpacing.screenH, GaSpacing.xl,
+                  GaSpacing.screenH, GaSpacing.xxl),
+              sliver: SliverList.list(
+                children: gaStagger([
+                  _ScoreHero(score: scoring.currentScore),
+                  const SizedBox(height: GaSpacing.xl),
+                  const GaSectionHeader('Accès rapide'),
+                  const _QuickActions(),
+                  const SizedBox(height: GaSpacing.xl),
+                  _FormationCard(
+                      progressPercent: formation.progressPercent,
+                      xp: formation.totalXp),
+                  const SizedBox(height: GaSpacing.md),
+                  const _FinancementCard(),
+                  const SizedBox(height: GaSpacing.md),
+                  const _AssuranceCard(),
+                ]),
+              ),
+            ),
           ],
         ),
       ),
@@ -107,65 +89,119 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 }
 
-class _ScoreCard extends StatelessWidget {
-  final ScoreClimatModel? score;
-  const _ScoreCard({this.score});
-
-  Color get _scoreColor {
-    if (score == null) return AppColors.textSecondary;
-    return switch (score!.niveau) {
-      NiveauScore.insuffisant   => AppColors.scoreInsuffisant,
-      NiveauScore.intermediaire => AppColors.scoreIntermediaire,
-      NiveauScore.bon           => AppColors.scoreBon,
-      NiveauScore.excellent     => AppColors.scoreExcellent,
-    };
-  }
+class _Header extends StatelessWidget {
+  const _Header({required this.name, required this.unread});
+  final String name;
+  final int unread;
 
   @override
   Widget build(BuildContext context) {
-    final scoreVal = score?.scoreTotal ?? 0;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Row(
+    final date = DateFormat("EEEE d MMMM", 'fr').format(DateTime.now());
+    return GaGradientHeader(
+      title: 'Bonjour, ${name.split(' ').first}',
+      subtitle: '${date[0].toUpperCase()}${date.substring(1)}',
+      actions: [
+        Stack(
+          clipBehavior: Clip.none,
           children: [
-            CircularPercentIndicator(
-              radius: 50,
-              lineWidth: 8,
-              percent: scoreVal / 100,
-              center: Text(
-                scoreVal.toStringAsFixed(0),
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: _scoreColor),
-              ),
-              progressColor: _scoreColor,
-              backgroundColor: AppColors.divider,
+            IconButton(
+              onPressed: () => context.go(AppRoutes.notifications),
+              icon:
+                  const Icon(Icons.notifications_none_rounded, color: Colors.white),
             ),
-            const SizedBox(width: 20),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Score Climat ESG', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  const SizedBox(height: 4),
-                  Text(
-                    score == null ? 'Non calculé' : score!.niveau.name.toUpperCase(),
-                    style: TextStyle(color: _scoreColor, fontWeight: FontWeight.w600),
+            if (unread > 0)
+              Positioned(
+                right: 6,
+                top: 6,
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  constraints:
+                      const BoxConstraints(minWidth: 16, minHeight: 16),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.error,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 1.5),
                   ),
-                  const SizedBox(height: 8),
-                  ElevatedButton.icon(
-                    onPressed: () => context.go(AppRoutes.scoringForm),
-                    icon: const Icon(Icons.trending_up, size: 16),
-                    label: const Text('Améliorer mon score'),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(0, 36),
-                      textStyle: const TextStyle(fontSize: 12),
-                    ),
+                  child: Text(
+                    unread > 9 ? '9+' : '$unread',
+                    textAlign: TextAlign.center,
+                    style:
+                        const TextStyle(color: Colors.white, fontSize: 9),
                   ),
-                ],
+                ),
               ),
+          ],
+        ),
+        IconButton(
+          onPressed: () => context.go(AppRoutes.profil),
+          icon: const Icon(Icons.account_circle_outlined, color: Colors.white),
+        ),
+      ],
+    );
+  }
+}
+
+class _ScoreHero extends StatelessWidget {
+  const _ScoreHero({this.score});
+  final ScoreClimatModel? score;
+
+  @override
+  Widget build(BuildContext context) {
+    if (score == null) {
+      return GaCard(
+        child: Column(
+          children: [
+            const GaEmptyState(
+              compact: true,
+              icon: Icons.speed_rounded,
+              title: 'Votre Score Climat',
+              message: 'Répondez à 5 questions pour connaître votre score ESG.',
+            ),
+            const SizedBox(height: GaSpacing.md),
+            GaPrimaryButton(
+              label: 'Calculer mon score',
+              icon: Icons.auto_awesome_rounded,
+              onPressed: () => context.go(AppRoutes.scoringForm),
             ),
           ],
         ),
+      );
+    }
+    final s = score!;
+    return GaCard(
+      onTap: () => context.push(AppRoutes.scoreResult),
+      child: Row(
+        children: [
+          Hero(
+            tag: 'score-gauge',
+            child: Material(
+              color: Colors.transparent,
+              child: GaMiniGauge(score: s.scoreTotal, level: s.niveau, size: 96),
+            ),
+          ),
+          const SizedBox(width: GaSpacing.lg),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Score Climat ESG',
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 4),
+                GaBadgePill(
+                  label: GaScoreScale.labelFor(s.niveau),
+                  color: GaScoreScale.colorFor(
+                      s.niveau, Theme.of(context).brightness),
+                ),
+                const SizedBox(height: GaSpacing.sm),
+                GaSecondaryButton.tonal(
+                  label: 'Améliorer',
+                  icon: Icons.trending_up_rounded,
+                  onPressed: () => context.go(AppRoutes.scoringForm),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -176,69 +212,65 @@ class _QuickActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final actions = [
-      (Icons.school_outlined,    'Formation',   AppRoutes.courseList,  AppColors.primary),
-      (Icons.attach_money,       'Financement', AppRoutes.financement, AppColors.secondary),
-      (Icons.assessment_outlined,'Mon Score',   AppRoutes.scoringForm, AppColors.scoreBon),
-      (Icons.umbrella_outlined,  'Assurance',   AppRoutes.assurance,   AppColors.info),
+    final cs = Theme.of(context).colorScheme;
+    final actions = <(IconData, String, String, Color)>[
+      (Icons.school_rounded, 'Formation', AppRoutes.courseList, cs.primary),
+      (Icons.savings_rounded, 'Financement', AppRoutes.financement, cs.tertiary),
+      (Icons.speed_rounded, 'Mon Score', AppRoutes.scoringForm,
+          context.gaColors.success),
+      (Icons.shield_moon_rounded, 'Assurance', AppRoutes.assurance,
+          context.gaColors.info),
     ];
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceAround,
-      children: actions
-          .map((a) => _ActionChip(icon: a.$1, label: a.$2, route: a.$3, color: a.$4))
-          .toList(),
-    );
-  }
-}
-
-class _ActionChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String route;
-  final Color color;
-  const _ActionChip({required this.icon, required this.label, required this.route, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => context.go(route),
-      child: Column(
-        children: [
-          CircleAvatar(
-            backgroundColor: color.withValues(alpha: 0.15),
-            radius: 28,
-            child: Icon(icon, color: color, size: 28),
+      children: [
+        for (var i = 0; i < actions.length; i++) ...[
+          if (i > 0) const SizedBox(width: GaSpacing.sm),
+          Expanded(
+            child: GaStatTile(
+              icon: actions[i].$1,
+              value: '',
+              label: actions[i].$2,
+              color: actions[i].$4,
+              onTap: () => context.go(actions[i].$3),
+            ),
           ),
-          const SizedBox(height: 6),
-          Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
         ],
-      ),
+      ],
     );
   }
 }
 
 class _FormationCard extends StatelessWidget {
+  const _FormationCard({required this.progressPercent, required this.xp});
   final int progressPercent;
   final int xp;
-  const _FormationCard({required this.progressPercent, required this.xp});
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: ListTile(
-        leading: const Icon(Icons.school, color: AppColors.primary, size: 32),
-        title: const Text('Formation', style: TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 4),
-            LinearProgressIndicator(value: progressPercent / 100, color: AppColors.primary),
-            const SizedBox(height: 4),
-            Text('$progressPercent% · $xp XP cumulés'),
-          ],
-        ),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () => context.go(AppRoutes.courseList),
+    return GaCard(
+      onTap: () => context.go(AppRoutes.courseList),
+      child: Row(
+        children: [
+          _Leading(icon: Icons.school_rounded, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(width: GaSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Formation',
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: GaSpacing.sm),
+                GaMeterRow(
+                  label: '$xp XP cumulés',
+                  value: progressPercent.toDouble(),
+                  trailing: '$progressPercent %',
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: GaSpacing.sm),
+          const Icon(Icons.chevron_right_rounded),
+        ],
       ),
     );
   }
@@ -249,13 +281,28 @@ class _FinancementCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: ListTile(
-        leading: const Icon(Icons.account_balance_outlined, color: AppColors.secondary, size: 32),
-        title: const Text('Financement', style: TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: const Text('Accéder aux demandes de micro-financement vert'),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () => context.go(AppRoutes.financement),
+    return GaCard(
+      onTap: () => context.go(AppRoutes.financement),
+      child: Row(
+        children: [
+          _Leading(
+              icon: Icons.account_balance_rounded,
+              color: Theme.of(context).colorScheme.tertiary),
+          const SizedBox(width: GaSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Financement',
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 2),
+                Text('Micro-crédit vert et suivi de vos demandes',
+                    style: Theme.of(context).textTheme.bodySmall),
+              ],
+            ),
+          ),
+          const Icon(Icons.chevron_right_rounded),
+        ],
       ),
     );
   }
@@ -266,54 +313,77 @@ class _AssuranceCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final uid = ref.watch(authViewModelProvider.select((s) => s.user?.id ?? ''));
-    final contrats = ref.watch(assuranceViewModelProvider(uid).select((s) => s.contrats));
+    final uid =
+        ref.watch(authViewModelProvider.select((s) => s.user?.id ?? ''));
+    final contrats =
+        ref.watch(assuranceViewModelProvider(uid).select((s) => s.contrats));
 
     final expiringSoon = contrats.where((c) {
       if (c.statut.name != 'actif') return false;
-      final expiry = DateTime(c.dateDebut.year, c.dateDebut.month + 12, c.dateDebut.day);
+      final expiry =
+          DateTime(c.dateDebut.year, c.dateDebut.month + 12, c.dateDebut.day);
       final days = expiry.difference(DateTime.now()).inDays;
       return days >= 0 && days <= 30;
     }).toList();
 
-    return Card(
+    return GaCard(
+      onTap: () => context.go(AppRoutes.assurance),
       child: Column(
         children: [
-          ListTile(
-            leading: const Icon(Icons.umbrella_outlined, color: AppColors.primary, size: 32),
-            title: const Text('Assurance Climatique', style: TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text(
-              contrats.isEmpty
-                  ? 'Gérer vos contrats et zones à risque'
-                  : '${contrats.length} contrat${contrats.length > 1 ? 's' : ''}',
-            ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.go(AppRoutes.assurance),
-          ),
-          if (expiringSoon.isNotEmpty)
-            Container(
-              margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppColors.warning.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColors.warning.withValues(alpha: 0.4)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.timer_outlined, size: 16, color: AppColors.warning),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      '${expiringSoon.length} contrat${expiringSoon.length > 1 ? 's expirent' : ' expire'} bientôt — pensez à renouveler',
-                      style: const TextStyle(fontSize: 12, color: AppColors.warning, fontWeight: FontWeight.w500),
+          Row(
+            children: [
+              _Leading(
+                  icon: Icons.shield_moon_rounded,
+                  color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: GaSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Assurance climatique',
+                        style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 2),
+                    Text(
+                      contrats.isEmpty
+                          ? 'Gérer vos contrats et zones à risque'
+                          : '${contrats.length} contrat${contrats.length > 1 ? 's' : ''}',
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              const Icon(Icons.chevron_right_rounded),
+            ],
+          ),
+          if (expiringSoon.isNotEmpty) ...[
+            const SizedBox(height: GaSpacing.md),
+            GaInfoBanner(
+              kind: GaBannerKind.warning,
+              icon: Icons.timer_outlined,
+              message:
+                  '${expiringSoon.length} contrat${expiringSoon.length > 1 ? 's expirent' : ' expire'} bientôt — pensez à renouveler.',
             ),
+          ],
         ],
       ),
+    );
+  }
+}
+
+class _Leading extends StatelessWidget {
+  const _Leading({required this.icon, required this.color});
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(GaSpacing.sm),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: GaRadii.brSm,
+      ),
+      child: Icon(icon, color: color, size: 24),
     );
   }
 }

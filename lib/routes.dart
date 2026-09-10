@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'models/user_model.dart';
+import 'ui/motion/ga_page_transitions.dart';
 import 'viewmodels/auth_viewmodel.dart';
 import 'views/assurance/assurance_screen.dart';
 import 'views/assurance/fiches_produit_screen.dart';
@@ -130,20 +131,12 @@ class _RouterNotifier extends ChangeNotifier {
   }
 }
 
-// ── Transition rapide ─────────────────────────────────────────────────────────
+// ── Transitions de page ───────────────────────────────────────────────────────
+// Fondu court par défaut (comportement historique), transitions expressives par
+// flux via le design system (`GaPageTransitions`).
 
-CustomTransitionPage<void> _fadePage(GoRouterState state, Widget child) {
-  return CustomTransitionPage<void>(
-    key: state.pageKey,
-    child: child,
-    transitionDuration: const Duration(milliseconds: 120),
-    reverseTransitionDuration: const Duration(milliseconds: 100),
-    transitionsBuilder: (_, animation, __, child) => FadeTransition(
-      opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
-      child: child,
-    ),
-  );
-}
+CustomTransitionPage<void> _fadePage(GoRouterState state, Widget child) =>
+    GaPageTransitions.fade(state, child);
 
 // ── Provider du router ────────────────────────────────────────────────────────
 
@@ -159,18 +152,18 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       // ── Écrans publics ─────────────────────────────────────────────────────
       GoRoute(path: AppRoutes.splash,     builder: (_, __) => const SplashScreen()),
-      GoRoute(path: AppRoutes.onboarding, pageBuilder: (_, s) => _fadePage(s, const OnboardingScreen())),
-      GoRoute(path: AppRoutes.login,      pageBuilder: (_, s) => _fadePage(s, const LoginScreen())),
-      GoRoute(path: AppRoutes.register,   pageBuilder: (_, s) => _fadePage(s, const RegisterScreen())),
-      GoRoute(path: AppRoutes.otp,        pageBuilder: (_, s) => _fadePage(s, const OTPScreen())),
+      GoRoute(path: AppRoutes.onboarding, pageBuilder: (_, s) => GaPageTransitions.fadeThrough(s, const OnboardingScreen())),
+      GoRoute(path: AppRoutes.login,      pageBuilder: (_, s) => GaPageTransitions.fadeThrough(s, const LoginScreen())),
+      GoRoute(path: AppRoutes.register,   pageBuilder: (_, s) => GaPageTransitions.fadeThrough(s, const RegisterScreen())),
+      GoRoute(path: AppRoutes.otp,        pageBuilder: (_, s) => GaPageTransitions.sharedAxisV(s, const OTPScreen())),
 
       // ── Scoring (hors shell — flow plein écran sans bottom nav) ────────────
       GoRoute(
         path: AppRoutes.scoringForm,
-        pageBuilder: (_, s) => _fadePage(s, const ScoringFormScreen()),
+        pageBuilder: (_, s) => GaPageTransitions.sharedAxisH(s, const ScoringFormScreen()),
         routes: [
-          GoRoute(path: 'result',  pageBuilder: (_, s) => _fadePage(s, const ScoreResultScreen())),
-          GoRoute(path: 'history', pageBuilder: (_, s) => _fadePage(s, const HistoriqueScoreScreen())),
+          GoRoute(path: 'result',  pageBuilder: (_, s) => GaPageTransitions.sharedAxisH(s, const ScoreResultScreen())),
+          GoRoute(path: 'history', pageBuilder: (_, s) => GaPageTransitions.sharedAxisH(s, const HistoriqueScoreScreen())),
         ],
       ),
 

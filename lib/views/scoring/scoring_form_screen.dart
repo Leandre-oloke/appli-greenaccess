@@ -1,8 +1,9 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../core/constants/app_colors.dart';
+
 import '../../routes.dart';
+import '../../ui/ui.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 import '../../viewmodels/scoring_viewmodel.dart';
 
@@ -14,7 +15,7 @@ class ScoringFormScreen extends ConsumerStatefulWidget {
 }
 
 class _ScoringFormScreenState extends ConsumerState<ScoringFormScreen> {
-  int _currentStep = 0;
+  int _step = 0;
 
   String _typeActivite = 'Agriculture';
   String _alignementUemoa = 'Non';
@@ -22,10 +23,19 @@ class _ScoringFormScreenState extends ConsumerState<ScoringFormScreen> {
   final List<String> _certifications = [];
   int _resilience = 3;
 
-  final List<String> _activites = [
-    'Agriculture', 'Énergie renouvelable', 'Recyclage', 'Transport propre', 'Forêt'
+  static const _activites = <(String, String)>[
+    ('Agriculture', '🌾'),
+    ('Énergie renouvelable', '☀️'),
+    ('Recyclage', '♻️'),
+    ('Transport propre', '🚲'),
+    ('Forêt', '🌳'),
   ];
-  final List<String> _certifsList = ['Bio', 'Équitable', 'ISO 14001', 'Carbone Neutre'];
+  static const _certifs = <(String, String)>[
+    ('Bio', '🌱'),
+    ('Équitable', '🤝'),
+    ('ISO 14001', '📋'),
+    ('Carbone Neutre', '🌍'),
+  ];
 
   Future<void> _submit() async {
     final userId = ref.read(authViewModelProvider).user?.id ?? '';
@@ -44,124 +54,120 @@ class _ScoringFormScreenState extends ConsumerState<ScoringFormScreen> {
     }
   }
 
+  void _continue() {
+    if (_step < 4) {
+      setState(() => _step++);
+    } else {
+      _submit();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final userId = ref.watch(authViewModelProvider).user?.id ?? '';
     final state = ref.watch(scoringViewModelProvider(userId));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Calcul du Score Climat')),
-      body: Stepper(
-        currentStep: _currentStep,
-        onStepContinue: () {
-          if (_currentStep < 4) {
-            setState(() => _currentStep++);
-          } else {
-            _submit();
-          }
-        },
-        onStepCancel: () {
-          if (_currentStep > 0) setState(() => _currentStep--);
-        },
-        controlsBuilder: (context, details) => Padding(
-          padding: const EdgeInsets.only(top: 16),
-          child: Row(
-            children: [
-              ElevatedButton(
-                onPressed: state.isCalculating ? null : details.onStepContinue,
-                child: state.isCalculating && _currentStep == 4
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : Text(_currentStep == 4 ? 'Calculer mon score' : 'Suivant'),
+      appBar: const GaAppBar(title: 'Score Climat'),
+      body: SafeArea(
+        child: GaStepper(
+          currentStep: _step,
+          busy: state.isCalculating,
+          finishLabel: 'Calculer mon score',
+          onStepContinue: _continue,
+          onStepCancel: () => setState(() => _step--),
+          steps: [
+            GaStep(
+              title: "Quelle est votre activité ?",
+              content: GaChoiceGroup<String>(
+                options: [
+                  for (final (name, emoji) in _activites)
+                    GaChoiceOption(value: name, label: name, emoji: emoji),
+                ],
+                selected: {_typeActivite},
+                onChanged: (s) => setState(() => _typeActivite = s.first),
               ),
-              if (_currentStep > 0) ...[
-                const SizedBox(width: 12),
-                TextButton(onPressed: details.onStepCancel, child: const Text('Retour')),
-              ],
-            ],
-          ),
-        ),
-        steps: [
-          Step(
-            title: const Text("Type d'activité"),
-            isActive: _currentStep >= 0,
-            state: _currentStep > 0 ? StepState.complete : StepState.indexed,
-            content: DropdownButtonFormField<String>(
-              value: _typeActivite,
-              decoration: const InputDecoration(labelText: "Secteur d'activité"),
-              items: _activites.map((a) => DropdownMenuItem(value: a, child: Text(a))).toList(),
-              onChanged: (v) => setState(() => _typeActivite = v!),
             ),
-          ),
-          Step(
-            title: const Text('Alignement taxonomie UEMOA'),
-            isActive: _currentStep >= 1,
-            state: _currentStep > 1 ? StepState.complete : StepState.indexed,
-            content: Column(
-              children: ['Oui', 'Partiel', 'Non'].map((v) => RadioListTile<String>(
-                title: Text(v),
-                value: v,
-                groupValue: _alignementUemoa,
-                onChanged: (val) => setState(() => _alignementUemoa = val!),
-                activeColor: AppColors.primary,
-              )).toList(),
+            GaStep(
+              title: 'Alignement à la taxonomie UEMOA',
+              subtitle: 'Critères verts AMF-UEMOA',
+              content: GaChoiceGroup<String>(
+                options: const [
+                  GaChoiceOption(
+                      value: 'Oui',
+                      label: 'Oui, pleinement',
+                      description: 'Activité conforme aux critères verts',
+                      icon: Icons.verified_rounded),
+                  GaChoiceOption(
+                      value: 'Partiel',
+                      label: 'Partiellement',
+                      description: 'Conformité en cours',
+                      icon: Icons.timelapse_rounded),
+                  GaChoiceOption(
+                      value: 'Non',
+                      label: 'Non / je ne sais pas',
+                      icon: Icons.help_outline_rounded),
+                ],
+                selected: {_alignementUemoa},
+                onChanged: (s) => setState(() => _alignementUemoa = s.first),
+              ),
             ),
-          ),
-          Step(
-            title: const Text('Impact CO₂ estimé'),
-            isActive: _currentStep >= 2,
-            state: _currentStep > 2 ? StepState.complete : StepState.indexed,
-            content: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Tonnes CO₂ évitées/an : ${_co2Evite.toStringAsFixed(0)}'),
-                Slider(
-                  value: _co2Evite,
-                  min: 0,
-                  max: 500,
-                  divisions: 50,
-                  activeColor: AppColors.primary,
-                  label: '${_co2Evite.toStringAsFixed(0)} t',
-                  onChanged: (v) => setState(() => _co2Evite = v),
-                ),
-              ],
+            GaStep(
+              title: 'Impact CO₂ estimé',
+              content: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Text(
+                    _co2Evite.round().toString(),
+                    style: GaTypography.numeric(context.gaTokens, size: 52),
+                  ),
+                  Text('tonnes de CO₂ évitées par an',
+                      style: Theme.of(context).textTheme.bodyMedium),
+                  const SizedBox(height: GaSpacing.lg),
+                  Slider(
+                    value: _co2Evite,
+                    max: 500,
+                    divisions: 50,
+                    label: '${_co2Evite.round()} t',
+                    onChanged: (v) => setState(() => _co2Evite = v),
+                  ),
+                ],
+              ),
             ),
-          ),
-          Step(
-            title: const Text('Certifications existantes'),
-            isActive: _currentStep >= 3,
-            state: _currentStep > 3 ? StepState.complete : StepState.indexed,
-            content: Column(
-              children: _certifsList.map((c) => CheckboxListTile(
-                title: Text(c),
-                value: _certifications.contains(c),
-                activeColor: AppColors.primary,
-                onChanged: (val) => setState(() {
-                  val! ? _certifications.add(c) : _certifications.remove(c);
+            GaStep(
+              title: 'Vos certifications',
+              subtitle: 'Plusieurs choix possibles',
+              content: GaChoiceGroup<String>(
+                multi: true,
+                options: [
+                  for (final (name, emoji) in _certifs)
+                    GaChoiceOption(value: name, label: name, emoji: emoji),
+                ],
+                selected: _certifications.toSet(),
+                onChanged: (s) => setState(() {
+                  _certifications
+                    ..clear()
+                    ..addAll(s);
                 }),
-              )).toList(),
+              ),
             ),
-          ),
-          Step(
-            title: const Text('Résilience climatique'),
-            isActive: _currentStep >= 4,
-            state: StepState.indexed,
-            content: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Niveau de résilience (1 = faible, 5 = très bon)'),
-                Slider(
-                  value: _resilience.toDouble(),
-                  min: 1,
-                  max: 5,
-                  divisions: 4,
-                  activeColor: AppColors.primary,
-                  label: '$_resilience/5',
-                  onChanged: (v) => setState(() => _resilience = v.round()),
-                ),
-              ],
+            GaStep(
+              title: 'Votre résilience climatique',
+              subtitle: 'Plan d\'adaptation, diversification…',
+              content: GaChoiceGroup<int>(
+                options: const [
+                  GaChoiceOption(value: 1, label: '1 — Faible'),
+                  GaChoiceOption(value: 2, label: '2 — Limitée'),
+                  GaChoiceOption(value: 3, label: '3 — Moyenne'),
+                  GaChoiceOption(value: 4, label: '4 — Bonne'),
+                  GaChoiceOption(value: 5, label: '5 — Très bonne'),
+                ],
+                selected: {_resilience},
+                onChanged: (s) => setState(() => _resilience = s.first),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

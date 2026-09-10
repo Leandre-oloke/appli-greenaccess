@@ -53,8 +53,11 @@ class GaStatTile extends StatelessWidget {
                   child: Icon(icon, size: 18, color: c),
                 ),
               const SizedBox(height: GaSpacing.sm),
-              Text(value, style: GaTypography.numeric(context.gaTokens, size: 22)),
-              const SizedBox(height: 2),
+              if (value.isNotEmpty) ...[
+                Text(value,
+                    style: GaTypography.numeric(context.gaTokens, size: 22)),
+                const SizedBox(height: 2),
+              ],
               Text(
                 label,
                 maxLines: 2,

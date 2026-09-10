@@ -1,8 +1,9 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../core/constants/app_colors.dart';
+
 import '../../routes.dart';
+import '../../ui/ui.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -16,7 +17,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
-  bool _obscure = true;
 
   @override
   void dispose() {
@@ -27,10 +27,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    await ref.read(authViewModelProvider.notifier).signIn(
-          _emailCtrl.text.trim(),
-          _passwordCtrl.text,
-        );
+    await ref
+        .read(authViewModelProvider.notifier)
+        .signIn(_emailCtrl.text.trim(), _passwordCtrl.text);
     if (mounted && ref.read(authViewModelProvider).isAuthenticated) {
       context.go(AppRoutes.dashboard);
     }
@@ -39,84 +38,132 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authViewModelProvider);
+    final brightness = Theme.of(context).brightness;
 
     return Scaffold(
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: 48),
-                Image.asset(
-                  'assets/images/logo.png',
-                  height: 120,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => const Icon(
-                    Icons.eco,
-                    size: 80,
-                    color: AppColors.primary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Finance verte · Éducation climatique · Assurance inclusive',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppColors.textSecondary,
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            // ── Bandeau héros ──────────────────────────────────────────────
+            Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                gradient: GaGradients.of(brightness).header,
+                borderRadius: GaRadii.brHeaderBottom,
+              ),
+              padding: const EdgeInsets.fromLTRB(
+                  GaSpacing.xl, GaSpacing.xxl, GaSpacing.xl, GaSpacing.xxxl),
+              child: SafeArea(
+                bottom: false,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Hero(
+                      tag: 'brand-mark',
+                      child: Container(
+                        padding: const EdgeInsets.all(GaSpacing.md),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Image.asset(
+                          'assets/images/logo.png',
+                          width: 44,
+                          height: 44,
+                          errorBuilder: (_, __, ___) => const Icon(
+                              Icons.eco_rounded,
+                              color: Colors.white,
+                              size: 36),
+                        ),
                       ),
+                    ),
+                    const SizedBox(height: GaSpacing.lg),
+                    Text(
+                      'Bon retour',
+                      style: Theme.of(context)
+                          .textTheme
+                          .displaySmall
+                          ?.copyWith(color: Colors.white),
+                    ),
+                    const SizedBox(height: GaSpacing.xs),
+                    Text(
+                      'Finance verte · Éducation climatique · Assurance inclusive',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Colors.white.withValues(alpha: 0.85),
+                          ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 48),
-                TextFormField(
-                  controller: _emailCtrl,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                    prefixIcon: Icon(Icons.email_outlined),
-                  ),
-                  validator: (v) =>
-                      v == null || !v.contains('@') ? 'Email invalide' : null,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _passwordCtrl,
-                  obscureText: _obscure,
-                  decoration: InputDecoration(
-                    labelText: 'Mot de passe',
-                    prefixIcon: const Icon(Icons.lock_outline),
-                    suffixIcon: IconButton(
-                      icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
-                      onPressed: () => setState(() => _obscure = !_obscure),
+              ),
+            ),
+
+            // ── Carte de connexion ────────────────────────────────────────
+            Transform.translate(
+              offset: const Offset(0, -GaSpacing.xl),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints:
+                      const BoxConstraints(maxWidth: GaBreakpoints.maxForm),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: GaSpacing.screenH),
+                    child: GaCard(
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: gaStagger([
+                            GaTextField(
+                              controller: _emailCtrl,
+                              label: 'Email',
+                              prefixIcon: Icons.mail_outline_rounded,
+                              keyboardType: TextInputType.emailAddress,
+                              textInputAction: TextInputAction.next,
+                              validator: (v) => v == null || !v.contains('@')
+                                  ? 'Email invalide'
+                                  : null,
+                            ),
+                            const SizedBox(height: GaSpacing.md),
+                            GaTextField(
+                              controller: _passwordCtrl,
+                              label: 'Mot de passe',
+                              prefixIcon: Icons.lock_outline_rounded,
+                              obscureText: true,
+                              textInputAction: TextInputAction.done,
+                              onSubmitted: (_) => _submit(),
+                              validator: (v) => v == null || v.length < 6
+                                  ? 'Minimum 6 caractères'
+                                  : null,
+                            ),
+                            if (authState.error != null) ...[
+                              const SizedBox(height: GaSpacing.md),
+                              GaInfoBanner(
+                                message: authState.error!,
+                                kind: GaBannerKind.error,
+                              ),
+                            ],
+                            const SizedBox(height: GaSpacing.xl),
+                            GaPrimaryButton(
+                              label: 'Se connecter',
+                              loading: authState.isLoading,
+                              onPressed: _submit,
+                            ),
+                            const SizedBox(height: GaSpacing.xs),
+                            GaSecondaryButton.ghost(
+                              label: "Pas encore de compte ? S'inscrire",
+                              expand: true,
+                              onPressed: () => context.push(AppRoutes.register),
+                            ),
+                          ]),
+                        ),
+                      ),
                     ),
                   ),
-                  validator: (v) =>
-                      v == null || v.length < 6 ? 'Minimum 6 caractères' : null,
                 ),
-                if (authState.error != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    authState.error!,
-                    style: const TextStyle(color: AppColors.error),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: authState.isLoading ? null : _submit,
-                  child: authState.isLoading
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text('Se connecter'),
-                ),
-                const SizedBox(height: 16),
-                TextButton(
-                  onPressed: () => context.push(AppRoutes.register),
-                  child: const Text("Pas encore de compte ? S'inscrire"),
-                ),
-              ],
+              ),
             ),
-          ),
+            const SizedBox(height: GaSpacing.xl),
+          ],
         ),
       ),
     );

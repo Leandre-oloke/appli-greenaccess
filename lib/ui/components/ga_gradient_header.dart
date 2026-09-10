@@ -52,12 +52,13 @@ class GaGradientHeader extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (actions != null && actions!.isNotEmpty)
+            if (leading != null ||
+                (actions != null && actions!.isNotEmpty))
               Row(
                 children: [
-                  if (leading != null) leading!,
+                  if (leading != null) leading! else const SizedBox(width: 0),
                   const Spacer(),
-                  ...actions!,
+                  ...?actions,
                 ],
               ),
             Row(

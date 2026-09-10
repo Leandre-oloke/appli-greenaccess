@@ -1,8 +1,12 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/constants/app_colors.dart';
+import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
+
 import '../../models/score_climat_model.dart';
+import '../../routes.dart';
+import '../../ui/ui.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 import '../../viewmodels/scoring_viewmodel.dart';
 
@@ -10,10 +14,12 @@ class HistoriqueScoreScreen extends ConsumerStatefulWidget {
   const HistoriqueScoreScreen({super.key});
 
   @override
-  ConsumerState<HistoriqueScoreScreen> createState() => _HistoriqueScoreScreenState();
+  ConsumerState<HistoriqueScoreScreen> createState() =>
+      _HistoriqueScoreScreenState();
 }
 
-class _HistoriqueScoreScreenState extends ConsumerState<HistoriqueScoreScreen> {
+class _HistoriqueScoreScreenState
+    extends ConsumerState<HistoriqueScoreScreen> {
   @override
   void initState() {
     super.initState();
@@ -27,203 +33,243 @@ class _HistoriqueScoreScreenState extends ConsumerState<HistoriqueScoreScreen> {
   Widget build(BuildContext context) {
     final uid = ref.watch(authViewModelProvider).user?.id ?? '';
     final state = ref.watch(scoringViewModelProvider(uid));
+    final history = state.history;
+    final latest = history.isNotEmpty ? history.first : null;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Historique des scores')),
-      body: state.isCalculating
-          ? const Center(child: CircularProgressIndicator())
-          : state.history.isEmpty
-              ? _EmptyHistory()
-              : Column(
-                  children: [
-                    _ChartCard(history: state.history),
-                    Expanded(child: _HistoryList(history: state.history)),
-                  ],
-                ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          GaGradientHeader(
+            title: 'Votre progression',
+            subtitle: 'Historique du Score Climat ESG',
+            leading: IconButton(
+              onPressed: () => context.canPop()
+                  ? context.pop()
+                  : context.go(AppRoutes.dashboard),
+              icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+            ),
+            trailing: latest == null
+                ? null
+                : GaBadgePill(
+                    label: '${latest.scoreTotal.round()} pts',
+                    color: Colors.white,
+                    filled: false,
+                  ),
+          ),
+          Expanded(
+            child: state.isCalculating
+                ? const Padding(
+                    padding: EdgeInsets.all(GaSpacing.screenH),
+                    child: GaSkeletonList(itemCount: 6),
+                  )
+                : history.isEmpty
+                    ? GaEmptyState(
+                        icon: Icons.show_chart_rounded,
+                        title: 'Aucun score calculé',
+                        message:
+                            'Complétez le questionnaire pour obtenir votre premier score.',
+                        action: GaPrimaryButton(
+                          label: 'Calculer mon score',
+                          icon: Icons.auto_awesome_rounded,
+                          expand: false,
+                          onPressed: () => context.go(AppRoutes.scoringForm),
+                        ),
+                      )
+                    : ListView(
+                        padding: const EdgeInsets.all(GaSpacing.screenH),
+                        children: [
+                          _ChartCard(history: history),
+                          const SizedBox(height: GaSpacing.xl),
+                          const GaSectionHeader('Tous vos calculs'),
+                          for (var i = 0; i < history.length; i++)
+                            Padding(
+                              padding:
+                                  const EdgeInsets.only(bottom: GaSpacing.md),
+                              child: _ScoreItem(
+                                score: history[i],
+                                previous: i + 1 < history.length
+                                    ? history[i + 1]
+                                    : null,
+                                number: history.length - i,
+                              ),
+                            ),
+                        ],
+                      ),
+          ),
+        ],
+      ),
     );
   }
 }
 
 class _ChartCard extends StatelessWidget {
-  final List<ScoreClimatModel> history;
   const _ChartCard({required this.history});
+  final List<ScoreClimatModel> history;
 
   @override
   Widget build(BuildContext context) {
-    final spots = history.asMap().entries.map((e) {
-      return FlSpot(e.key.toDouble(), e.value.scoreTotal);
-    }).toList();
+    final cs = Theme.of(context).colorScheme;
+    final clay = context.gaColors.clay;
+    // Historique renvoyé du plus récent au plus ancien → on inverse pour le tracé.
+    final chrono = history.reversed.toList();
+    final spots = chrono
+        .asMap()
+        .entries
+        .map((e) => FlSpot(e.key.toDouble(), e.value.scoreTotal))
+        .toList();
 
-    return Card(
-      margin: const EdgeInsets.all(16),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Évolution du Score Climat ESG',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-            const SizedBox(height: 4),
-            const Text('10 derniers calculs',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-            const SizedBox(height: 20),
-            SizedBox(
-              height: 180,
-              child: LineChart(
-                LineChartData(
-                  minY: 0,
-                  maxY: 100,
-                  gridData: FlGridData(
-                    show: true,
-                    getDrawingHorizontalLine: (_) => const FlLine(
-                      color: AppColors.divider,
-                      strokeWidth: 0.5,
-                    ),
-                    drawVerticalLine: false,
-                  ),
-                  borderData: FlBorderData(show: false),
-                  titlesData: FlTitlesData(
-                    leftTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: 36,
-                        getTitlesWidget: (val, _) => Text(
-                          '${val.toInt()}',
-                          style: const TextStyle(fontSize: 10, color: AppColors.textSecondary),
-                        ),
-                      ),
-                    ),
-                    bottomTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  ),
-                  extraLinesData: ExtraLinesData(
-                    horizontalLines: [
-                      HorizontalLine(
-                        y: 60,
-                        color: AppColors.success.withValues(alpha: 0.5),
-                        strokeWidth: 1.5,
-                        dashArray: [6, 3],
-                        label: HorizontalLineLabel(
-                          show: true,
-                          alignment: Alignment.topRight,
-                          labelResolver: (_) => '  Seuil financement',
-                          style: const TextStyle(color: AppColors.success, fontSize: 10),
-                        ),
-                      ),
-                    ],
-                  ),
-                  lineBarsData: [
-                    LineChartBarData(
-                      spots: spots,
-                      isCurved: true,
-                      color: AppColors.primary,
-                      barWidth: 3,
-                      dotData: FlDotData(
-                        getDotPainter: (spot, _, __, ___) => FlDotCirclePainter(
-                          radius: 5,
-                          color: AppColors.primary,
-                          strokeColor: Colors.white,
-                          strokeWidth: 2,
-                        ),
-                      ),
-                      belowBarData: BarAreaData(
-                        show: true,
-                        color: AppColors.primary.withValues(alpha: 0.08),
-                      ),
-                    ),
-                  ],
+    return GaCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Évolution', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 2),
+          Text('${history.length} derniers calculs',
+              style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: GaSpacing.lg),
+          SizedBox(
+            height: 180,
+            child: LineChart(
+              LineChartData(
+                minY: 0,
+                maxY: 100,
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  getDrawingHorizontalLine: (_) =>
+                      FlLine(color: cs.outline, strokeWidth: 0.5),
                 ),
+                borderData: FlBorderData(show: false),
+                titlesData: FlTitlesData(
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 32,
+                      interval: 25,
+                      getTitlesWidget: (val, _) => Text('${val.toInt()}',
+                          style: Theme.of(context).textTheme.labelSmall),
+                    ),
+                  ),
+                  bottomTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
+                  topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
+                ),
+                extraLinesData: ExtraLinesData(horizontalLines: [
+                  HorizontalLine(
+                    y: GaScoreScale.seuilFinancement.toDouble(),
+                    color: clay,
+                    strokeWidth: 1.5,
+                    dashArray: [6, 3],
+                    label: HorizontalLineLabel(
+                      show: true,
+                      alignment: Alignment.topRight,
+                      labelResolver: (_) => '  Seuil financement',
+                      style: Theme.of(context)
+                          .textTheme
+                          .labelSmall
+                          ?.copyWith(color: clay),
+                    ),
+                  ),
+                ]),
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: spots,
+                    isCurved: true,
+                    color: cs.primary,
+                    barWidth: 3,
+                    dotData: FlDotData(
+                      getDotPainter: (s, _, __, ___) => FlDotCirclePainter(
+                        radius: 4,
+                        color: cs.primary,
+                        strokeColor: cs.surface,
+                        strokeWidth: 2,
+                      ),
+                    ),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          cs.primary.withValues(alpha: 0.22),
+                          cs.primary.withValues(alpha: 0.0),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
-    );
-  }
-}
-
-class _HistoryList extends StatelessWidget {
-  final List<ScoreClimatModel> history;
-  const _HistoryList({required this.history});
-
-  @override
-  Widget build(BuildContext context) {
-    final reversed = history.reversed.toList();
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      itemCount: reversed.length,
-      itemBuilder: (_, i) => _ScoreItem(score: reversed[i], index: reversed.length - i),
     );
   }
 }
 
 class _ScoreItem extends StatelessWidget {
+  const _ScoreItem({
+    required this.score,
+    required this.previous,
+    required this.number,
+  });
   final ScoreClimatModel score;
-  final int index;
-  const _ScoreItem({required this.score, required this.index});
-
-  Color _niveauColor() => switch (score.niveau) {
-        NiveauScore.insuffisant => AppColors.scoreInsuffisant,
-        NiveauScore.intermediaire => AppColors.scoreIntermediaire,
-        NiveauScore.bon => AppColors.scoreBon,
-        NiveauScore.excellent => AppColors.scoreExcellent,
-      };
-
-  String _niveauLabel() => switch (score.niveau) {
-        NiveauScore.insuffisant => 'Insuffisant',
-        NiveauScore.intermediaire => 'Intermédiaire',
-        NiveauScore.bon => 'Bon',
-        NiveauScore.excellent => 'Excellent',
-      };
+  final ScoreClimatModel? previous;
+  final int number;
 
   @override
   Widget build(BuildContext context) {
-    final color = _niveauColor();
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: color.withValues(alpha: 0.15),
-          child: Text(
-            '${score.scoreTotal.round()}',
-            style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13),
-          ),
-        ),
-        title: Text(
-          'Score #$index  ·  ${_niveauLabel()}',
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-        subtitle: Text(
-          _formatDate(score.dateCalcul),
-          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
-        ),
-        trailing: Icon(
-          score.peutDemanderFinancement ? Icons.check_circle : Icons.cancel_outlined,
-          color: score.peutDemanderFinancement ? AppColors.success : AppColors.error,
-        ),
-      ),
-    );
-  }
+    final color =
+        GaScoreScale.colorFor(score.niveau, Theme.of(context).brightness);
+    final delta =
+        previous == null ? null : score.scoreTotal - previous!.scoreTotal;
 
-  String _formatDate(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}  ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
-}
-
-class _EmptyHistory extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+    return GaCard(
+      padding: const EdgeInsets.all(GaSpacing.md),
+      child: Row(
         children: [
-          Icon(Icons.show_chart, size: 80, color: AppColors.divider),
-          SizedBox(height: 16),
-          Text('Aucun score calculé', style: TextStyle(fontSize: 18, color: AppColors.textSecondary)),
-          SizedBox(height: 8),
-          Text('Remplissez le formulaire de scoring pour obtenir votre premier score.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textSecondary)),
+          GaMiniGauge(score: score.scoreTotal, level: score.niveau, size: 52),
+          const SizedBox(width: GaSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text('Score #$number',
+                        style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(width: GaSpacing.sm),
+                    if (delta != null && delta.abs() >= 0.5)
+                      GaBadgePill(
+                        label:
+                            '${delta > 0 ? '+' : ''}${delta.toStringAsFixed(0)}',
+                        color: delta > 0
+                            ? context.gaColors.success
+                            : Theme.of(context).colorScheme.error,
+                        icon: delta > 0
+                            ? Icons.north_east_rounded
+                            : Icons.south_east_rounded,
+                        dense: true,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  DateFormat('dd/MM/yyyy · HH:mm').format(score.dateCalcul),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          GaBadgePill(
+            label: GaScoreScale.labelFor(score.niveau),
+            color: color,
+            dense: true,
+          ),
         ],
       ),
     );

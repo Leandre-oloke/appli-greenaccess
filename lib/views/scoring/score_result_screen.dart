@@ -1,33 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:percent_indicator/circular_percent_indicator.dart';
 import 'package:printing/printing.dart';
-import '../../core/constants/app_colors.dart';
-import '../../routes.dart';
+
 import '../../models/score_climat_model.dart';
+import '../../routes.dart';
+import '../../ui/ui.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 import '../../viewmodels/scoring_viewmodel.dart';
 
 class ScoreResultScreen extends ConsumerWidget {
   const ScoreResultScreen({super.key});
-
-  Color _colorForNiveau(NiveauScore niveau) => switch (niveau) {
-        NiveauScore.insuffisant   => AppColors.scoreInsuffisant,
-        NiveauScore.intermediaire => AppColors.scoreIntermediaire,
-        NiveauScore.bon           => AppColors.scoreBon,
-        NiveauScore.excellent     => AppColors.scoreExcellent,
-      };
-
-  String _labelForNiveau(NiveauScore niveau) => switch (niveau) {
-        NiveauScore.insuffisant   => 'Insuffisant',
-        NiveauScore.intermediaire => 'Intermédiaire',
-        NiveauScore.bon           => 'Bon',
-        NiveauScore.excellent     => 'Excellent',
-      };
 
   Future<void> _exportPdf(
       BuildContext context, ScoreClimatModel score, String userName) async {
@@ -227,167 +214,197 @@ class ScoreResultScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final user   = ref.watch(authViewModelProvider).user;
+    final user = ref.watch(authViewModelProvider).user;
     final userId = user?.id ?? '';
-    final score  = ref.watch(scoringViewModelProvider(userId)).currentScore;
+    final score = ref.watch(scoringViewModelProvider(userId)).currentScore;
 
     if (score == null) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Score Climat')),
-        body: const Center(child: Text('Aucun score disponible')),
+      return GaScaffold(
+        appBar: const GaAppBar(title: 'Score Climat'),
+        body: const GaEmptyState(
+          icon: Icons.speed_rounded,
+          title: 'Aucun score disponible',
+          message: 'Complétez le questionnaire pour obtenir votre Score Climat.',
+        ),
       );
     }
 
-    final color = _colorForNiveau(score.niveau);
-    final label = _labelForNiveau(score.niveau);
+    final crit = score.criteres;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Résultat du Score'),
-        actions: [
-          IconButton(
-            tooltip: 'Exporter en PDF',
-            icon: const Icon(Icons.picture_as_pdf_outlined),
-            onPressed: () => _exportPdf(context, score, user?.nom ?? ''),
-          ),
-        ],
-      ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            CircularPercentIndicator(
-              radius: 90,
-              lineWidth: 12,
-              percent: score.scoreTotal / 100,
-              animation: true,
-              animationDuration: 1500,
-              center: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    score.scoreTotal.toStringAsFixed(0),
-                    style: TextStyle(
-                        fontSize: 40, fontWeight: FontWeight.bold, color: color),
-                  ),
-                  Text('/100', style: TextStyle(color: color)),
-                ],
-              ),
-              progressColor: color,
-              backgroundColor: AppColors.divider,
-            ),
-            const SizedBox(height: 16),
+            // ── Héros ─────────────────────────────────────────────────────
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              width: double.infinity,
               decoration: BoxDecoration(
-                  color: color, borderRadius: BorderRadius.circular(20)),
-              child: Text(label,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18)),
-            ),
-            const SizedBox(height: 24),
-            if (score.peutDemanderFinancement)
-              _InfoBanner(
-                icon: Icons.check_circle,
-                text: 'Score ≥ 60 : vous pouvez soumettre une demande de financement !',
-                color: AppColors.success,
-              )
-            else
-              _InfoBanner(
-                icon: Icons.info_outline,
-                text: 'Score < 60 : complétez des formations pour améliorer votre score.',
-                color: AppColors.warning,
+                gradient: GaGradients.of(Theme.of(context).brightness).header,
+                borderRadius: GaRadii.brHeaderBottom,
               ),
-            const SizedBox(height: 24),
-            if (score.suggestions.isNotEmpty) ...[
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text('Suggestions d\'amélioration',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              ),
-              const SizedBox(height: 12),
-              ...score.suggestions.map((s) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+              padding: const EdgeInsets.fromLTRB(
+                  GaSpacing.lg, GaSpacing.sm, GaSpacing.lg, GaSpacing.xxl),
+              child: SafeArea(
+                bottom: false,
+                child: Column(
+                  children: [
+                    Row(
                       children: [
-                        const Icon(Icons.arrow_right, color: AppColors.primary),
-                        Expanded(child: Text(s)),
+                        IconButton(
+                          onPressed: () => context.canPop()
+                              ? context.pop()
+                              : context.go(AppRoutes.dashboard),
+                          icon: const Icon(Icons.arrow_back_rounded,
+                              color: Colors.white),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          tooltip: 'Exporter en PDF',
+                          onPressed: () =>
+                              _exportPdf(context, score, user?.nom ?? ''),
+                          icon: const Icon(Icons.ios_share_rounded,
+                              color: Colors.white),
+                        ),
                       ],
                     ),
-                  )),
-              const SizedBox(height: 24),
-            ],
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => context.push(AppRoutes.scoreHistory),
-                    icon: const Icon(Icons.history),
-                    label: const Text('Historique'),
-                  ),
+                    const SizedBox(height: GaSpacing.sm),
+                    Hero(
+                      tag: 'score-gauge',
+                      child: Material(
+                        color: Colors.transparent,
+                        child: GaScoreGauge(
+                          score: score.scoreTotal,
+                          level: score.niveau,
+                          size: 232,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: score.peutDemanderFinancement
-                        ? () => context.go(AppRoutes.financement)
-                        : () => context.push(AppRoutes.courseList),
-                    icon: Icon(score.peutDemanderFinancement
-                        ? Icons.account_balance
-                        : Icons.school),
-                    label: Text(score.peutDemanderFinancement
-                        ? 'Demander un financement'
-                        : 'Améliorer via formation'),
-                  ),
-                ),
-              ],
+              ),
             ),
-            const SizedBox(height: 12),
-            // Bouton export PDF secondaire visible en bas d'écran
-            OutlinedButton.icon(
-              onPressed: () => _exportPdf(context, score, user?.nom ?? ''),
-              icon: const Icon(Icons.picture_as_pdf_outlined),
-              label: const Text('Exporter le rapport PDF'),
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size.fromHeight(46),
-                foregroundColor: AppColors.primary,
-                side: const BorderSide(color: AppColors.primary),
+
+            Padding(
+              padding: const EdgeInsets.all(GaSpacing.screenH),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: gaStagger([
+                  GaInfoBanner(
+                    message: GaScoreScale.eligibiliteMessage(score.scoreTotal),
+                    kind: score.peutDemanderFinancement
+                        ? GaBannerKind.success
+                        : GaBannerKind.warning,
+                  ),
+                  const SizedBox(height: GaSpacing.xl),
+                  const GaSectionHeader('Détail des critères'),
+                  GaCard(
+                    child: Column(
+                      children: [
+                        _meter(context, 'Activité verte', crit.scoreActivite),
+                        const SizedBox(height: GaSpacing.md),
+                        _meter(context, 'Alignement UEMOA', crit.scoreUemoa),
+                        const SizedBox(height: GaSpacing.md),
+                        _meter(context, 'Réduction CO₂', crit.scoreCo2),
+                        const SizedBox(height: GaSpacing.md),
+                        _meter(context, 'Certifications', crit.scoreCertif),
+                        const SizedBox(height: GaSpacing.md),
+                        _meter(context, 'Résilience climatique',
+                            crit.scoreResilience),
+                        const SizedBox(height: GaSpacing.md),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text('Bonus formations',
+                                  style: Theme.of(context).textTheme.bodyMedium),
+                            ),
+                            GaBadgePill(
+                              label:
+                                  '+${crit.bonusFormation.toStringAsFixed(0)} pts',
+                              color: Theme.of(context).colorScheme.primary,
+                              icon: Icons.school_rounded,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (score.suggestions.isNotEmpty) ...[
+                    const SizedBox(height: GaSpacing.xl),
+                    const GaSectionHeader("Comment progresser"),
+                    GaCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          for (final s in score.suggestions)
+                            Padding(
+                              padding:
+                                  const EdgeInsets.only(bottom: GaSpacing.sm),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(Icons.eco_rounded,
+                                      size: 18,
+                                      color:
+                                          Theme.of(context).colorScheme.primary),
+                                  const SizedBox(width: GaSpacing.sm),
+                                  Expanded(
+                                      child: Text(s,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodyMedium)),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: GaSpacing.xl),
+                  Row(
+                    children: [
+                      GaSecondaryButton.outlined(
+                        label: 'Historique',
+                        icon: Icons.timeline_rounded,
+                        onPressed: () => context.push(AppRoutes.scoreHistory),
+                      ),
+                      const SizedBox(width: GaSpacing.md),
+                      Expanded(
+                        child: GaPrimaryButton(
+                          label: score.peutDemanderFinancement
+                              ? 'Demander un financement'
+                              : 'Améliorer via formation',
+                          icon: score.peutDemanderFinancement
+                              ? Icons.account_balance_rounded
+                              : Icons.school_rounded,
+                          onPressed: score.peutDemanderFinancement
+                              ? () => context.go(AppRoutes.financement)
+                              : () => context.push(AppRoutes.courseList),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: GaSpacing.md),
+                  GaSecondaryButton.ghost(
+                    label: 'Exporter le rapport PDF',
+                    icon: Icons.picture_as_pdf_outlined,
+                    expand: true,
+                    onPressed: () => _exportPdf(context, score, user?.nom ?? ''),
+                  ),
+                  const SizedBox(height: GaSpacing.xl),
+                ]),
               ),
             ),
           ],
         ),
       ),
-    );
+    ).animate().fadeIn(duration: GaMotion.base);
   }
-}
 
-class _InfoBanner extends StatelessWidget {
-  final IconData icon;
-  final String text;
-  final Color color;
-  const _InfoBanner({required this.icon, required this.text, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        border: Border.all(color: color),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: color),
-          const SizedBox(width: 10),
-          Expanded(
-              child: Text(text,
-                  style: TextStyle(color: color, fontWeight: FontWeight.w500))),
-        ],
-      ),
-    );
-  }
+  Widget _meter(BuildContext context, String label, double value) => GaMeterRow(
+        label: label,
+        value: value,
+        trailing: '${value.round()}/100',
+        color: Theme.of(context).colorScheme.primary,
+      );
 }
