@@ -317,6 +317,35 @@ Tests présents (`test/`) :
   et les timers à durée nulle que `flutter_animate` programme pour la cascade d'entrée
   (`gaStagger`) doivent être vidés avec `pump(Duration.zero)`, pas un `pump()` nu, sous
   peine de `A Timer is still pending` en fin de test.
+- `widgets/scoring_form_screen_test.dart` (J2.18) — navigation des 5 étapes du stepper
+  (« Suivant »/« Retour »), conservation de la sélection au retour, contenu exact du
+  payload soumis à `soumettreCriteres` (clés par défaut + certifications sélectionnées),
+  bandeau d'erreur avec action « Voir les cours ». Même stratégie de fake pour
+  `AuthRepository` ; `ScoreRepository` (utilisée par `ScoringViewModel`) a le même problème
+  d'évaluation eager de Firebase dans son constructeur par défaut — contournée avec
+  `firestore: FakeFirebaseFirestore()` et un `Mock` `FirebaseFunctions` jamais invoqué (le
+  `_FakeScoringViewModel` surcharge `soumettreCriteres` entièrement).
+- `widgets/score_result_screen_test.dart` (J2.19) — état vide sans score, jauge (valeur +
+  niveau via le badge "Bon"/"Excellent"…), détail des 5 critères + bonus formation, section
+  suggestions affichée seulement si non vide, bandeau et bouton d'action selon
+  `peutDemanderFinancement`. Les boutons retour/export PDF/navigation ne sont pas testés
+  (hors périmètre "jauge, niveau, suggestions") : ils appellent des APIs indisponibles sans
+  routeur/plateforme réels (`context.canPop()`, `Printing.sharePdf`, `go_router`).
+- `widgets/demande_form_screen_test.dart` (J2.20) — navigation du stepper 7 étapes,
+  validation par étape (nom requis à l'étape 1, description ≥ 20 caractères à l'étape 2),
+  bouton de soumission désactivé tant que la case de confirmation n'est pas cochée à
+  l'étape 7. `ScoringViewModel`/`FinancementViewModel` n'ont aucun effet de bord dans leur
+  constructeur : utilisés directement (pas de sous-classe fake) avec des repositories
+  branchés sur `FakeFirebaseFirestore()`. A révélé deux bugs réels :
+  1. `_onNext()` n'appelait jamais `_formKey.currentState.validate()` avant d'avancer — les
+     validators "Requis"/"Minimum 20 caractères" des étapes 1-2 n'étaient jamais déclenchés,
+     "Suivant" avançait toujours. Corrigé dans `demande_form_screen.dart`.
+  2. Le nom/la région pré-remplis depuis le profil utilisateur (`initState` →
+     `addPostFrameCallback` → `setState`, après le tout premier build) restaient invisibles
+     à l'écran : un `TextFormField(initialValue:)` ne resynchronise son texte affiché qu'à
+     sa toute première construction, pas sur un rebuild ultérieur avec un `initialValue`
+     différent. Corrigé avec `key: ValueKey('nom-$nom')` (et pareil pour la région) sur ces
+     deux champs, pour forcer Flutter à recréer le champ quand la valeur préremplie change.
 - `widget_test.dart` — smoke test du design system (`AppTheme` clair/sombre + composants `Ga*`
   se rendent sans exception). Ne boote **pas** `GreenAccessApp` en entier : dès son premier
   `build()`, l'app touche trois plugins Firebase réels (Auth, Firestore, Messaging) dont le
@@ -487,8 +516,11 @@ seulement en local) :
 - **CI/CD GitHub Actions** : pipeline `analyze → test → build web / apk debug` sur chaque push
   + workflow de build APK release à la demande (§6ter)
 - Chaîne Android mise à niveau pour Flutter 3.47 (Gradle/AGP/Kotlin)
-- Tests unitaires de ViewModels (46) + widget test LoginScreen (validation, erreurs,
-  chargement) + smoke test du design system, exécutés en CI
+- Tests unitaires de ViewModels (46) + 4 widget tests (LoginScreen, ScoringFormScreen,
+  ScoreResultScreen, DemandeFormScreen — validation, navigation par étapes, états
+  d'erreur/chargement) + smoke test du design system, exécutés en CI ; ont révélé et
+  corrigé 3 bugs réels (débordement de layout, validation jamais déclenchée sur un
+  stepper 7 étapes, pré-remplissage de champ invisible à l'écran)
 - Tests des Firestore Security Rules (`firestore-tests/`, 22 tests) contre l'émulateur, en CI
   (isolation utilisateur, anti-élévation de rôle, droits partenaireFinanceur/partenaireAssureur,
   cloisonnement Assurance/paiements/remboursements, accès admin-only) — voir §6ter
