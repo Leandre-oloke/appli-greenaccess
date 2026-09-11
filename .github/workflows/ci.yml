@@ -2,6 +2,8 @@ name: CI
 
 # J1.1 — pipeline : analyze → test → build web / build apk debug (CDC §2.3, §8 S10)
 # J1.2 — cache pub + Gradle pour accélérer les runs suivants
+# J2.2 — job "integration" : Firestore Security Rules testées contre l'émulateur
+#        (@firebase/rules-unit-testing, voir firestore-tests/)
 
 on:
   push:
@@ -67,6 +69,36 @@ jobs:
           path: coverage/lcov.info
           if-no-files-found: ignore
           retention-days: 14
+
+  integration:
+    name: firestore rules (emulator)
+    needs: analyze
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Cache npm (firestore-tests)
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-firestore-tests
+
+      - run: npm install -g firebase-tools
+
+      - run: npm --prefix firestore-tests install
+
+      - name: Firestore Security Rules tests (émulateur)
+        run: firebase emulators:exec --project=greenaccess-16d25 --only firestore "npm --prefix firestore-tests test"
 
   build_web:
     name: build web

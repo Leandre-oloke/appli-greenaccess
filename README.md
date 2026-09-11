@@ -251,8 +251,15 @@ Deux workflows dans `.github/workflows/` (Java 17, cache pub + cache Gradle) :
 
 | Workflow | Déclencheur | Contenu |
 |---|---|---|
-| `ci.yml` | push sur toute branche + PR | `flutter analyze` → `flutter test --coverage` → (`build web` ‖ `build apk --debug`, en parallèle après les tests). Artefacts : `coverage-lcov`, `greenaccess-debug-apk` (7 jours). |
+| `ci.yml` | push sur toute branche + PR | `flutter analyze` → (`flutter test --coverage` ‖ `firestore rules (emulator)`, en parallèle après `analyze`) → (`build web` ‖ `build apk --debug`, en parallèle après `test`). Artefacts : `coverage-lcov`, `greenaccess-debug-apk` (7 jours). |
 | `build-apk.yml` | manuel (`workflow_dispatch`) ou push sur `feat/design-system-overhaul` | `flutter build apk --release --split-per-abi`. Artefact `greenaccess-apk` (arm64-v8a, armeabi-v7a, x86_64 séparés — l'arm64 tient sous 30 Mo pour une distribution directe). |
+
+Le job `integration` (`ci.yml`) démarre l'émulateur Firestore (`firebase emulators:exec
+--only firestore`, Java 17 requis) et y exécute `firestore-tests/` (Node.js,
+`@firebase/rules-unit-testing`) : isolation des documents `users/{uid}`, interdiction de
+s'auto-promouvoir `role: admin`, cloisonnement des `scores_climat` et `demandes_financement`
+par propriétaire, droits d'écriture `partenaireFinanceur`. C'est un test des **Security
+Rules**, pas de l'app Flutter — voir §7 pour pourquoi ce choix.
 
 Les deux régénèrent `android/app/google-services.json` à la volée depuis les clés déjà
 versionnées dans `lib/firebase_options.dart` (§5) — aucun secret de repo à configurer.
@@ -284,6 +291,24 @@ Tests présents (`test/`) :
 
 Exécutés automatiquement par `ci.yml` à chaque push.
 
+**Firestore Security Rules** (`firestore-tests/`, Node.js) :
+
+```bash
+bash .devcontainer/run-emulators.sh          # émulateurs en continu (dev/QA manuelle)
+# ou, comme en CI :
+firebase emulators:exec --only firestore "npm --prefix firestore-tests test"
+```
+
+Pourquoi un projet Node séparé plutôt qu'un test Flutter : un `flutter test` classique tourne
+dans la VM Dart, sans platform channels — les plugins `firebase_auth`/`cloud_firestore` ne
+peuvent donc pas parler à un émulateur réel (c'est ce qui a cassé `widget_test.dart` avant sa
+réécriture, voir ci-dessus). `@firebase/rules-unit-testing` est la lib officielle pour ce cas :
+elle synthétise des contextes d'auth côté Node directement contre l'émulateur Firestore, sans
+même avoir besoin de l'émulateur Auth. Des tests d'intégration Flutter réels (repositories
+`AuthRepository`/`ScoreRepository`/`FinancementRepository`/`CoursRepository` contre les
+émulateurs) restent à faire via `flutter test --platform chrome` ou le package
+`integration_test` — plus risqué à mettre en place, pas encore tenté.
+
 ---
 
 ## 8. État d'avancement
@@ -309,6 +334,8 @@ Exécutés automatiquement par `ci.yml` à chaque push.
   + workflow de build APK release à la demande (§6ter)
 - Chaîne Android mise à niveau pour Flutter 3.47 (Gradle/AGP/Kotlin)
 - Tests unitaires de ViewModels (46) + smoke test du design system, exécutés en CI
+- Tests des Firestore Security Rules (`firestore-tests/`) contre l'émulateur, en CI
+  (isolation utilisateur, anti-élévation de rôle, droits partenaireFinanceur)
 - Mécanisme de bascule d'environnement (`APP_ENV=dev/prod`, `lib/firebase_env.dart`) — en
   attente d'un second projet Firebase de dev pour devenir effectif (voir §5)
 
@@ -321,7 +348,8 @@ Exécutés automatiquement par `ci.yml` à chaque push.
   émulateurs Firebase
 - Créer un projet Firebase de dev distinct et y brancher `firebase_env.dart`
 - Retirer le calcul de score de secours côté client (`ScoreRepository`), non conforme au CDC
-- Couverture de tests à étendre (repositories, widgets, parcours d'intégration/E2E)
+- Couverture de tests à étendre : repositories Flutter contre les émulateurs
+  (`flutter test --platform chrome` ou `integration_test`), widgets, parcours E2E
 - Intégration réelle des API Mobile Money (actuellement flux applicatif)
 - Carte des aléas climatiques (Module Assurance, `flutter_map` déjà déclaré)
 
