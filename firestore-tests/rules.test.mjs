@@ -131,3 +131,114 @@ test('un utilisateur non authentifié ne peut rien lire', async () => {
   const anon = testEnv.unauthenticatedContext().firestore();
   await assertFails(anon.doc('users/alice').get());
 });
+
+// ── J2.7 — Module Assurance (contrats, sinistres, produits, zones aléas) ────
+
+test('un utilisateur ne peut pas se déclarer admin dès la création de son profil', async () => {
+  const alice = testEnv.authenticatedContext('alice').firestore();
+  await assertFails(
+    alice.doc('users/alice').set({ nom: 'Alice', role: 'admin' }),
+  );
+});
+
+test('un utilisateur peut créer son propre contrat_assurance', async () => {
+  const alice = testEnv.authenticatedContext('alice').firestore();
+  await assertSucceeds(
+    alice.collection('contrats_assurance').add({ userId: 'alice', statut: 'actif' }),
+  );
+});
+
+test("un contrat d'assurance est invisible pour un autre utilisateur", async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().doc('contrats_assurance/c1').set({ userId: 'alice', statut: 'actif' });
+  });
+  const bob = testEnv.authenticatedContext('bob').firestore();
+  await assertFails(bob.doc('contrats_assurance/c1').get());
+});
+
+test('un partenaireAssureur peut lire et mettre à jour un contrat, le propriétaire ne peut pas le modifier', async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await db.doc('contrats_assurance/c1').set({ userId: 'alice', statut: 'actif' });
+    await db.doc('users/assureur1').set({ nom: 'Assureur', role: 'partenaireAssureur' });
+  });
+  const assureur = testEnv.authenticatedContext('assureur1').firestore();
+  await assertSucceeds(assureur.doc('contrats_assurance/c1').get());
+  await assertSucceeds(assureur.doc('contrats_assurance/c1').update({ statut: 'resilie' }));
+
+  const alice = testEnv.authenticatedContext('alice').firestore();
+  await assertFails(alice.doc('contrats_assurance/c1').update({ statut: 'resilie' }));
+});
+
+test('un sinistre est invisible pour un autre utilisateur mais lisible par un partenaireAssureur', async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await db.doc('sinistres/s1').set({ userId: 'alice', statut: 'declare' });
+    await db.doc('users/assureur1').set({ nom: 'Assureur', role: 'partenaireAssureur' });
+  });
+  const bob = testEnv.authenticatedContext('bob').firestore();
+  await assertFails(bob.doc('sinistres/s1').get());
+  const assureur = testEnv.authenticatedContext('assureur1').firestore();
+  await assertSucceeds(assureur.doc('sinistres/s1').get());
+});
+
+test('produits_assurance : lecture ouverte, écriture réservée aux admins', async () => {
+  const alice = testEnv.authenticatedContext('alice').firestore();
+  await assertSucceeds(alice.doc('produits_assurance/p1').get());
+  await assertFails(alice.doc('produits_assurance/p1').set({ nom: 'Produit' }));
+
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().doc('users/admin1').set({ nom: 'Admin', role: 'admin' });
+  });
+  const admin = testEnv.authenticatedContext('admin1').firestore();
+  await assertSucceeds(admin.doc('produits_assurance/p1').set({ nom: 'Produit' }));
+});
+
+test('zones_alea : lecture ouverte, écriture réservée aux admins', async () => {
+  const alice = testEnv.authenticatedContext('alice').firestore();
+  await assertSucceeds(alice.doc('zones_alea/z1').get());
+  await assertFails(alice.doc('zones_alea/z1').set({ nom: 'Zone' }));
+});
+
+// ── J2.8 — Paiements, partenaires, notifications, remboursements ────────────
+
+test('un paiement est invisible pour un autre utilisateur', async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().doc('paiements/pay1').set({ userId: 'alice', montant: 5000 });
+  });
+  const bob = testEnv.authenticatedContext('bob').firestore();
+  const alice = testEnv.authenticatedContext('alice').firestore();
+  await assertFails(bob.doc('paiements/pay1').get());
+  await assertSucceeds(alice.doc('paiements/pay1').get());
+});
+
+test('partenaires : lecture ouverte aux utilisateurs authentifiés, écriture réservée aux admins', async () => {
+  const alice = testEnv.authenticatedContext('alice').firestore();
+  await assertSucceeds(alice.doc('partenaires/pt1').get());
+  await assertFails(alice.doc('partenaires/pt1').set({ nom: 'Partenaire' }));
+});
+
+test('notifications globales : un utilisateur ne peut ni créer ni supprimer, seul un admin le peut', async () => {
+  const alice = testEnv.authenticatedContext('alice').firestore();
+  await assertFails(alice.doc('notifications/n1').set({ titre: 'Alerte' }));
+
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().doc('users/admin1').set({ nom: 'Admin', role: 'admin' });
+  });
+  const admin = testEnv.authenticatedContext('admin1').firestore();
+  await assertSucceeds(admin.doc('notifications/n1').set({ titre: 'Alerte' }));
+});
+
+test('un utilisateur ne peut pas lire les échéances de remboursement de la demande d’un autre', async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await db.doc('demandes_financement/d1').set({ userId: 'alice', statut: 'approuve' });
+    await db
+      .doc('demandes_financement/d1/remboursements/e1')
+      .set({ numero_echeance: 1, montant: 1000, paye: false });
+  });
+  const bob = testEnv.authenticatedContext('bob').firestore();
+  const alice = testEnv.authenticatedContext('alice').firestore();
+  await assertFails(bob.doc('demandes_financement/d1/remboursements/e1').get());
+  await assertSucceeds(alice.doc('demandes_financement/d1/remboursements/e1').get());
+});
