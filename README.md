@@ -31,13 +31,20 @@ Le routage applique une redirection selon l'état d'authentification et le rôle
 lib/
 ├── main.dart                 # bootstrap : Firebase, FCM, cache Firestore offline, ProviderScope
 ├── routes.dart               # AppRoutes + GoRouter (shell utilisateur + shell admin, redirections par rôle)
-├── theme.dart                # AppTheme.light
+├── theme.dart                # shim de compat. : ré-exporte AppTheme (lib/ui/theme/) + AppColors
 ├── firebase_options.dart     # config Firebase générée par FlutterFire (clés client)
 │
 ├── core/
-│   ├── constants/app_colors.dart
+│   ├── constants/app_colors.dart          # ré-exporte AppColors (voir ui/theme)
 │   ├── providers/prefs_provider.dart      # SharedPreferences injecté via override
+│   ├── providers/theme_mode_provider.dart # clair / sombre / système, persistant
 │   └── widgets/connectivity_banner.dart   # bannière hors-ligne (connectivity_plus)
+│
+├── ui/               # design system « Organic Fintech » (voir package:greenaccess/ui/ui.dart)
+│   ├── tokens/       # couleurs (clair+sombre), spacing, radii, typo, motion, score-scale
+│   ├── theme/        # AppTheme.light/.dark + ThemeExtensions (GaShadows, GaGradients…)
+│   ├── motion/       # transitions de route (GaPageTransitions) + presets d'entrée
+│   └── components/   # 17 composants Ga* (GaCard, GaScoreGauge, GaStepper, GaChoiceGroup…)
 │
 ├── models/          # modèles de données immuables (+ enums de statut)
 │   ├── user_model.dart              (UserModel, UserRole)
@@ -80,15 +87,27 @@ lib/
 
 Navigation : `StatefulShellRoute.indexedStack` pour le shell utilisateur (5 onglets keep-alive : Accueil, Formation, Financement, Assurance, Profil) et un `ShellRoute` distinct pour le back-office admin.
 
+**Design system** : `lib/theme.dart` est un shim de compatibilité — il ré-exporte `AppTheme`
+(construit depuis `lib/ui/theme/`) et garde `AppColors` avec les mêmes noms mais des valeurs
+repointées sur les jetons du design system, pour que les écrans non encore refondus héritent
+de la palette. 9 écrans vitrine sont refondus de bout en bout (splash, onboarding, login,
+register, otp, dashboard, scoring, résultat de score, historique) ; les autres héritent du
+thème sans refonte de layout — détail dans `lib/ui/ui.dart`.
+
 ---
 
 ## 3. Stack technique
 
-- **Flutter** SDK `^3.8.1` (canal stable)
+- **Flutter** SDK `^3.8.1` (canal stable ; CI/Codespace sur Flutter 3.47)
 - **Firebase** : `firebase_core`, `firebase_auth`, `cloud_firestore`, `firebase_storage`, `cloud_functions`, `firebase_messaging`
 - **État** : `flutter_riverpod` `^2.5`
 - **Navigation** : `go_router` `^14.2`
 - **UI** : `fl_chart`, `percent_indicator`, Material 3
+- **Design system** (`lib/ui/`) : `flutter_animate` (cascades, shimmer), `animations` (transitions
+  shared-axis / fade-through), `lottie`, `flutter_svg`, `easy_stepper` — polices **Sora** (display)
+  et **Inter** (corps) bundlées dans `assets/fonts/` (pas `google_fonts`, pour rester déterministe
+  hors-ligne). Jauge de score signature en `CustomPainter` maison (`GaScoreGauge`).
+- **Cartographie** : `flutter_map` + `latlong2` déclarés (Module Assurance, pas encore importés)
 - **Divers** : `shared_preferences`, `intl` (locale `fr`), `url_launcher`, `file_picker`, `image_picker`, `geolocator`, `connectivity_plus`, `pdf` + `printing`, `equatable`
 - **Backend** : Cloud Functions (TypeScript) dans `functions/`
   - `calculerScoreClimat` (callable, contrôle d'accès)
@@ -96,6 +115,8 @@ Navigation : `StatefulShellRoute.indexedStack` pour le shell utilisateur (5 ongl
   - `onDemandeSubmitted` (trigger Firestore)
   - `checkAlertesClimatiques` (planifiée / pub-sub)
 - **Règles de sécurité** : `firestore.rules`, `storage.rules`, index dans `firestore.indexes.json`
+- **Chaîne Android** : Gradle `8.14.3` · AGP `8.11.1` · Kotlin `2.2.20` (minimums requis par
+  Flutter 3.47 — voir `android/gradle/wrapper/gradle-wrapper.properties` et `android/settings.gradle.kts`)
 
 Package Android : `com.greenaccess.greenaccess`
 
@@ -120,7 +141,7 @@ Pour des raisons de sécurité, ces fichiers **ne sont pas dans le dépôt** et 
 | `ios/Runner/GoogleService-Info.plist` | projet iOS | Console Firebase → app iOS |
 | `.env` / `*.env` | selon besoin | secrets locaux |
 
-> `lib/firebase_options.dart` **est** versionné (il ne contient que des clés client Firebase, protégées par les règles Firestore/Storage). Le dépôt GitLab est **privé** — ne pas le rendre public en l'état.
+> `lib/firebase_options.dart` **est** versionné (il ne contient que des clés client Firebase, protégées par les règles Firestore/Storage). Le dépôt GitHub est **public** — les workflows CI (`.github/workflows/`) régénèrent `android/app/google-services.json` à la volée à partir de ces mêmes clés, sans secret à configurer.
 
 Régénérer la config si besoin :
 
@@ -134,8 +155,8 @@ flutterfire configure
 
 ```bash
 # 1. Cloner
-git clone https://gitlab.com/nev-consulting-group/greenacces.git
-cd greenacces
+git clone https://github.com/Leandre-oloke/appli-greenaccess.git
+cd appli-greenaccess
 
 # 2. Déposer google-services.json / GoogleService-Info.plist (voir §5)
 
@@ -184,6 +205,27 @@ l'onglet *Ports*.
 
 Le dossier `web/` est minimal ; pour le régénérer complètement : `rm -rf web && flutter create --platforms=web .`
 
+Build d'un APK depuis le Codespace : `bash .devcontainer/build-apk.sh` (installe Java 17 + SDK
+Android si besoin, mémoire Gradle plafonnée pour la RAM du Codespace, repli automatique en
+`--debug` si `--release` échoue). Voir aussi §6ter pour un build via GitHub Actions.
+
+---
+
+## 6ter. CI/CD (GitHub Actions)
+
+Deux workflows dans `.github/workflows/` (Java 17, cache pub + cache Gradle) :
+
+| Workflow | Déclencheur | Contenu |
+|---|---|---|
+| `ci.yml` | push sur toute branche + PR | `flutter analyze` → `flutter test --coverage` → (`build web` ‖ `build apk --debug`, en parallèle après les tests). Artefacts : `coverage-lcov`, `greenaccess-debug-apk` (7 jours). |
+| `build-apk.yml` | manuel (`workflow_dispatch`) ou push sur `feat/design-system-overhaul` | `flutter build apk --release --split-per-abi`. Artefact `greenaccess-apk` (arm64-v8a, armeabi-v7a, x86_64 séparés — l'arm64 tient sous 30 Mo pour une distribution directe). |
+
+Les deux régénèrent `android/app/google-services.json` à la volée depuis les clés déjà
+versionnées dans `lib/firebase_options.dart` (§5) — aucun secret de repo à configurer.
+
+Lancer `build-apk.yml` manuellement : `gh workflow run "Build APK" --ref <branche>`, puis
+`gh run download <id> -n greenaccess-apk`.
+
 ---
 
 ## 7. Tests
@@ -198,7 +240,15 @@ Tests présents (`test/`) :
 - `viewmodels/assurance_viewmodel_test.dart`
 - `viewmodels/formation_viewmodel_test.dart`
 - `viewmodels/scoring_viewmodel_test.dart`
-- `helpers/firebase_test_setup.dart` — setup Firebase pour les tests (avec `fake_cloud_firestore`)
+- `widget_test.dart` — smoke test du design system (`AppTheme` clair/sombre + composants `Ga*`
+  se rendent sans exception). Ne boote **pas** `GreenAccessApp` en entier : dès son premier
+  `build()`, l'app touche trois plugins Firebase réels (Auth, Firestore, Messaging) dont le
+  mock fiable en test VM est fragile (canaux Pigeon spécifiques à chaque version) — un boot
+  complet avec Firebase réel relève d'un test `integration_test` sur device/émulateur.
+- `helpers/firebase_test_setup.dart` — mock des canaux `firebase_core`/`cloud_functions` legacy,
+  utilisé par les tests de ViewModels (repositories injectés avec `fake_cloud_firestore`)
+
+Exécutés automatiquement par `ci.yml` à chaque push.
 
 ---
 
@@ -217,14 +267,28 @@ Tests présents (`test/`) :
 - Cache Firestore hors-ligne + bannière de connectivité
 - Règles de sécurité Firestore & Storage, index Firestore
 - Cloud Functions : scoring, triggers cours/demande, alertes climatiques planifiées
-- Premiers tests unitaires de ViewModels
+- Exécution Web via Codespaces (`.devcontainer/`) — cible sans Android/iOS
+- **Design system « Organic Fintech »** (`lib/ui/`) : jetons clair/sombre, thème Material 3,
+  17 composants `Ga*`, jauge de score animée, transitions de route par flux ; 9 écrans vitrine
+  refondus bout en bout (auth complet, dashboard, parcours scoring)
+- **CI/CD GitHub Actions** : pipeline `analyze → test → build web / apk debug` sur chaque push
+  + workflow de build APK release à la demande (§6ter)
+- Chaîne Android mise à niveau pour Flutter 3.47 (Gradle/AGP/Kotlin)
+- Tests unitaires de ViewModels (46) + smoke test du design system, exécutés en CI
 
 **À faire / en cours**
 
+- Suite de la refonte visuelle : retrofit des écrans legacy restants, retrait de
+  `percent_indicator`, sélecteur de thème dans Profil
+- Activer le plan Blaze sur `greenaccess-16d25` puis `firebase deploy` (functions/rules/index)
 - Finaliser la configuration Firebase par environnement (dev / prod)
-- Couverture de tests à étendre (repositories, widgets, parcours d'intégration)
+- Retirer le calcul de score de secours côté client (`ScoreRepository`), non conforme au CDC
+- Couverture de tests à étendre (repositories, widgets, parcours d'intégration/E2E)
 - Intégration réelle des API Mobile Money (actuellement flux applicatif)
-- CI/CD GitLab (lint + `flutter test` + build)
+- Carte des aléas climatiques (Module Assurance, `flutter_map` déjà déclaré)
+
+> Suivi détaillé tâche par tâche : plan d'implémentation (classeur xlsx partagé séparément,
+> non versionné dans ce dépôt).
 
 ---
 
