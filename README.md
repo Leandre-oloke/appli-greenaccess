@@ -247,7 +247,7 @@ Android si besoin, mémoire Gradle plafonnée pour la RAM du Codespace, repli au
 
 ## 6ter. CI/CD (GitHub Actions)
 
-Deux workflows dans `.github/workflows/` (Java 17, cache pub + cache Gradle) :
+Deux workflows dans `.github/workflows/` (Java 17 ou 21 selon le job, cache pub + cache Gradle) :
 
 | Workflow | Déclencheur | Contenu |
 |---|---|---|
@@ -340,9 +340,9 @@ permanence. `test_driver/integration_test.dart` et la dépendance `integration_t
 place, prêts à resservir dès que ce blocage est levé.
 
 Écrire ces 4 fichiers est resté utile indépendamment de leur exécution : la relecture attentive
-du code qu'ils ont demandée a immédiatement révélé 5 bugs réels de
-correspondance de schéma entre `lib/repositories/score_repository.dart` et
-`functions/src/index.ts` (corrigés dans le même commit) :
+du code qu'ils ont demandée a révélé 7 bugs réels, dont 5 de correspondance de schéma entre
+`lib/repositories/score_repository.dart` et `functions/src/index.ts` (corrigés dans le même
+commit) :
 1. Le client envoyait des clés snake_case (`type_activite`…) à la Cloud Function, qui attend
    du camelCase (`typeActivite`…) — les 3 premiers critères retombaient silencieusement sur
    leurs valeurs par défaut.
