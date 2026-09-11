@@ -276,6 +276,34 @@ export const onDemandeSubmitted = functions
 
 // ── Cloud Function : onAlertClimatique (schedulée) ───────────────────────────
 
+export type TypeAlerte = "secheresse" | "inondation" | "chaleur" | null;
+
+/**
+ * Seuils de détection d'aléa climatique à partir des prévisions Open-Meteo
+ * du jour (extrait pour être testable sans réseau ni Firestore). Priorité
+ * en cas de cumul : inondation > chaleur > sécheresse (même ordre que
+ * l'ancien enchaînement de ternaires dans checkAlertesClimatiques).
+ */
+export function detecterAlerte(precipMm: number, tempMax: number): TypeAlerte {
+  if (precipMm > 80) return "inondation";
+  if (tempMax > 40) return "chaleur";
+  if (precipMm < 2 && tempMax > 35) return "secheresse";
+  return null;
+}
+
+function messageAlerte(typeAlerte: TypeAlerte, zoneNom: string, precipMm: number, tempMax: number): string {
+  switch (typeAlerte) {
+    case "inondation":
+      return `Alerte inondation : ${precipMm}mm prévus dans la zone ${zoneNom}`;
+    case "chaleur":
+      return `Alerte chaleur extrême : ${tempMax}°C prévus dans la zone ${zoneNom}`;
+    case "secheresse":
+      return `Alerte sécheresse : précipitations insuffisantes dans la zone ${zoneNom}`;
+    default:
+      return "";
+  }
+}
+
 export const checkAlertesClimatiques = functions
   .region("europe-west1")
   .pubsub.schedule("every 24 hours")
@@ -293,17 +321,10 @@ export const checkAlertesClimatiques = functions
         const precipMm = daily.precipitation_sum?.[0] ?? 0;
         const tempMax = daily.temperature_2m_max?.[0] ?? 0;
 
-        const isSecheresse = precipMm < 2 && tempMax > 35;
-        const isInondation = precipMm > 80;
-        const isChaleur = tempMax > 40;
+        const typeAlerte = detecterAlerte(precipMm, tempMax);
 
-        if (isSecheresse || isInondation || isChaleur) {
-          const typeAlerte = isInondation ? "inondation" : isChaleur ? "chaleur" : "secheresse";
-          const message = isInondation
-            ? `Alerte inondation : ${precipMm}mm prévus dans la zone ${zone.nom}`
-            : isChaleur
-            ? `Alerte chaleur extrême : ${tempMax}°C prévus dans la zone ${zone.nom}`
-            : `Alerte sécheresse : précipitations insuffisantes dans la zone ${zone.nom}`;
+        if (typeAlerte) {
+          const message = messageAlerte(typeAlerte, zone.nom, precipMm, tempMax);
 
           // Notifier les utilisateurs avec un contrat actif dans cette zone
           const contratsSnap = await db

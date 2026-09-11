@@ -126,7 +126,7 @@ class GaSecondaryButton extends StatelessWidget {
                 Icon(icon, size: 18),
                 const SizedBox(width: 6),
               ],
-              Text(label),
+              Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
             ],
           );
 

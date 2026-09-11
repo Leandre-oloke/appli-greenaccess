@@ -259,9 +259,12 @@ Le job `integration` (`ci.yml`) exécute trois suites :
    (`functions/test/calculerScoreClimat.test.ts`, `node --test` + `tsx`, sans émulateur) :
    formule pondérée exacte, bornes 0-100, arrondi, contrôle d'accès (unauthenticated /
    permission-denied).
-2. `npm --prefix functions run test:emulator` — tests des Cloud Functions déclenchées par
-   Firestore (`functions/test/triggers.test.ts`) : `onCourseCompleted` (badge déclenché +
-   idempotence), `onDemandeSubmitted` (ciblage des partenaires financeurs à notifier).
+2. `npm --prefix functions run test:emulator` — tests des Cloud Functions qui font de
+   vraies lectures/écritures Firestore : `onCourseCompleted` (badge déclenché + idempotence,
+   `functions/test/triggers.test.ts`), `onDemandeSubmitted` (ciblage des partenaires
+   financeurs à notifier, même fichier), `checkAlertesClimatiques` (seuils
+   sécheresse/inondation/chaleur + appel Open-Meteo mocké,
+   `functions/test/checkAlertesClimatiques.test.ts`).
 3. `firebase emulators:exec --only firestore` (Java 21 requis) exécute `firestore-tests/`
    (Node.js, `@firebase/rules-unit-testing`, 22 tests) : isolation des documents
    `users/{uid}`, interdiction de s'auto-promouvoir `role: admin` (à la création comme à la
@@ -297,6 +300,23 @@ Tests présents (`test/`) :
 - `viewmodels/assurance_viewmodel_test.dart`
 - `viewmodels/formation_viewmodel_test.dart`
 - `viewmodels/scoring_viewmodel_test.dart`
+- `widgets/login_screen_test.dart` (J2.17) — validation de formulaire (email invalide, mot
+  de passe < 6 caractères, aucun appel à `signIn` tant que le formulaire n'est pas valide),
+  affichage du bandeau d'erreur (`authState.error`), état de chargement (spinner + bouton
+  désactivé). `authViewModelProvider` construit un vrai `AuthRepository()` par défaut, dont
+  le constructeur évalue `FirebaseAuth.instance` (throw sans Firebase réel) — overridé par un
+  `_FakeAuthViewModel extends AuthViewModel` (requis par le typage du provider) dont
+  l'`AuthRepository` sous-jacent ne touche jamais Firebase : `firestore` fourni par
+  `fake_cloud_firestore`, `authStateChanges` (seul appel fait à la construction) surchargé
+  pour renvoyer un flux vide, et un `Mock` (mockito) implémentant `FirebaseAuth` juste pour
+  satisfaire le typage du constructeur — jamais réellement invoqué. A révélé deux bugs
+  réels en cours d'écriture : `GaSecondaryButton.ghost` (lien "Pas encore de compte ?
+  S'inscrire") débordait en `Row(mainAxisSize: min)` sans `Flexible` — corrigé dans
+  `lib/ui/components/ga_buttons.dart` — et `pumpAndSettle()` ne doit jamais être utilisé sur
+  un état `isLoading` (le `CircularProgressIndicator` indéterminé ne "se stabilise" jamais) ;
+  et les timers à durée nulle que `flutter_animate` programme pour la cascade d'entrée
+  (`gaStagger`) doivent être vidés avec `pump(Duration.zero)`, pas un `pump()` nu, sous
+  peine de `A Timer is still pending` en fin de test.
 - `widget_test.dart` — smoke test du design system (`AppTheme` clair/sombre + composants `Ga*`
   se rendent sans exception). Ne boote **pas** `GreenAccessApp` en entier : dès son premier
   `build()`, l'app touche trois plugins Firebase réels (Auth, Firestore, Messaging) dont le
@@ -342,6 +362,23 @@ l'émulateur (`npm --prefix functions run test:emulator`, dans `firebase emulato
   **jamais** atteindre le vrai appel `admin.messaging()` — il n'existe pas d'émulateur FCM
   dans la Firebase Emulator Suite, un appel réel contacterait un serveur Google avec des
   identifiants de test invalides.
+
+`functions/test/checkAlertesClimatiques.test.ts` :
+- `detecterAlerte(precipMm, tempMax)` (extraite, fonction pure) : les 3 seuils du CDC
+  (sécheresse `precip<2 && temp>35`, inondation `precip>80`, chaleur `temp>40`), y compris
+  pile sur les bornes (strictes, donc non déclenchées) et la priorité en cas de cumul
+  (inondation > chaleur > sécheresse).
+- `checkAlertesClimatiques` bout en bout avec `axios.get` mocké (`t.mock.method(axios,
+  'get', …)`) : lit une vraie zone dans `zones_alea` sur l'émulateur, vérifie que l'URL
+  Open-Meteo appelée contient les bonnes coordonnées, et qu'une zone en échec réseau
+  n'empêche pas le traitement des zones suivantes (`try/catch` par zone). Comme pour
+  `onDemandeSubmitted`, aucun contrat actif n'est seedé dans la zone testée : la boucle de
+  notification reste vide, `admin.messaging()` n'est jamais atteint.
+- Pourquoi `axios.get` est mockable mais pas `admin.messaging` : un import par défaut
+  (`import axios from "axios"`) pointe vers l'objet CJS mutable exporté par le package —
+  mockable. Un import namespace (`import * as admin from "firebase-admin"`) produit un
+  objet d'espace de noms ES figé par la spécification — `t.mock.method(admin, 'messaging', …)`
+  échoue avec `TypeError: must be a method`, vérifié empiriquement avant d'écrire ces tests.
 
 `functions/test/testEnv.ts` initialise `firebase-functions-test` en mode offline et fixe
 `GCLOUD_PROJECT`/`FIRESTORE_EMULATOR_HOST` avant que `src/index.ts` ne s'importe, car ce
@@ -450,15 +487,17 @@ seulement en local) :
 - **CI/CD GitHub Actions** : pipeline `analyze → test → build web / apk debug` sur chaque push
   + workflow de build APK release à la demande (§6ter)
 - Chaîne Android mise à niveau pour Flutter 3.47 (Gradle/AGP/Kotlin)
-- Tests unitaires de ViewModels (46) + smoke test du design system, exécutés en CI
+- Tests unitaires de ViewModels (46) + widget test LoginScreen (validation, erreurs,
+  chargement) + smoke test du design system, exécutés en CI
 - Tests des Firestore Security Rules (`firestore-tests/`, 22 tests) contre l'émulateur, en CI
   (isolation utilisateur, anti-élévation de rôle, droits partenaireFinanceur/partenaireAssureur,
   cloisonnement Assurance/paiements/remboursements, accès admin-only) — voir §6ter
-- Tests des Cloud Functions (`functions/test/`, 20 tests), en CI — formule `calculerScoreClimat`
+- Tests des Cloud Functions (`functions/test/`, 28 tests), en CI — formule `calculerScoreClimat`
   (poids CDC exacts, bornes 0-100, arrondi, contrôle d'accès), triggers `onCourseCompleted`
-  (badge + idempotence) et `onDemandeSubmitted` (ciblage partenaires financeurs) ; a révélé
-  et corrigé un bug réel de borne basse manquante (score négatif possible avec une entrée
-  hors plage)
+  (badge + idempotence), `onDemandeSubmitted` (ciblage partenaires financeurs) et
+  `checkAlertesClimatiques` (seuils sécheresse/inondation/chaleur, Open-Meteo mocké) ; a
+  révélé et corrigé un bug réel de borne basse manquante (score négatif possible avec une
+  entrée hors plage)
 - Tests d'intégration Flutter écrits (`integration_test/`) pour AuthRepository,
   ScoreRepository, FinancementRepository et CoursRepository contre les émulateurs — leur
   écriture a révélé et corrigé 7 bugs réels de correspondance de schéma/config (client ↔
