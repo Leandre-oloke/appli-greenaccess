@@ -5,7 +5,7 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "userId", "order": "ASCENDING" },
-        { "fieldPath": "dateCalcul", "order": "DESCENDING" }
+        { "fieldPath": "date_calcul", "order": "DESCENDING" }
       ]
     },
     {

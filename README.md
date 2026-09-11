@@ -317,6 +317,10 @@ firebase emulators:exec --only auth,firestore,functions \
   passe, suppression de compte, contre l'émulateur Auth + Firestore réels.
 - `score_repository_test.dart` — calcule un vrai score via `calculerScoreClimat` sur
   l'émulateur Functions, sauvegarde/lecture d'historique sur l'émulateur Firestore.
+- `financement_repository_test.dart` — soumission de demande, isolation par propriétaire,
+  droits de mise à jour (propriétaire vs. brouillon), échéancier de remboursement.
+- `cours_repository_test.dart` — repli sur les cours de démo, progression + déclenchement de
+  badges (≥70% au quiz), idempotence du badge "Assuré Climat".
 
 Ces fichiers utilisent `flutter test --platform chrome` (et non la VM Dart par défaut) : c'est
 un vrai navigateur headless, avec les implémentations web des plugins `firebase_*`, donc de
@@ -343,8 +347,21 @@ correspondance de schéma entre `lib/repositories/score_repository.dart` et
    `calculerScoreClimat` est déployée sur `europe-west1` — chaque appel aurait échoué en
    "not-found" une fois le plan Blaze activé.
 
-Restent à faire (repositories `FinancementRepository`/`CoursRepository`) selon le même
-principe.
+Deux bugs supplémentaires trouvés en stabilisant ces tests en CI (job GitHub Actions, pas
+seulement en local) :
+
+6. `firestore.indexes.json` déclarait l'index composite de `scores_climat` sur le champ
+   `dateCalcul`, qui n'existe dans aucun document réel — les requêtes utilisent bien
+   `date_calcul` (voir `ScoreRepository.getLatestScore`/`getHistory`). Une fois déployé, tout
+   appel à ces méthodes aurait échoué en `FAILED_PRECONDITION` (index manquant).
+7. `functions/package.json` déclarait `"engines": {"node": ">=20"}` — un intervalle, que
+   l'émulateur Functions refuse (il exige une version exacte parmi 20/22/24). Corrigé en
+   `"20"`.
+
+Un troisième point, plus subtil, a nécessité `TestWidgetsFlutterBinding.ensureInitialized()`
+en tête de chaque `setUpAll()` : contrairement à `testWidgets()`, un simple `test()` n'active
+pas automatiquement le binding Flutter, donc les platform channels (et donc les plugins
+`firebase_*`) ne sont pas encore utilisables au moment de `Firebase.initializeApp()`.
 
 ---
 
@@ -374,13 +391,21 @@ principe.
 - Tests des Firestore Security Rules (`firestore-tests/`) contre l'émulateur, en CI
   (isolation utilisateur, anti-élévation de rôle, droits partenaireFinanceur)
 - Tests d'intégration Flutter (`test/integration/`, `--platform chrome`) pour
-  AuthRepository et ScoreRepository contre les émulateurs — ont révélé et corrigé 5 bugs
-  réels de correspondance de schéma client/Cloud Function (voir §7)
+  AuthRepository, ScoreRepository, FinancementRepository et CoursRepository contre les
+  émulateurs — ont révélé et corrigé 7 bugs réels de correspondance de schéma/config
+  (client ↔ Cloud Function, index Firestore, version Node) — voir §7
 - Mécanisme de bascule d'environnement (`APP_ENV=dev/prod`, `lib/firebase_env.dart`) — en
   attente d'un second projet Firebase de dev pour devenir effectif (voir §5)
 
 **À faire / en cours**
 
+- ⚠️ **Sécurité à trancher** : `firestore.rules` autorise `allow create: if isOwner(userId)`
+  sur `users/{userId}` sans restreindre le champ `role` — l'app envoie toujours `role: 'user'`
+  à l'inscription (aucun écran ne permet de choisir), mais un client qui écrirait directement
+  dans Firestore (hors app) pourrait en théorie se créer un compte `role: 'admin'` dès la
+  création. Non exploité aujourd'hui, non corrigé ici (changerait le contrat des Security
+  Rules, testé par `firestore-tests/` — mérite une décision explicite plutôt qu'une correction
+  silencieuse). Fix probable : `allow create: if isOwner(userId) && request.resource.data.role == 'user';`
 - Suite de la refonte visuelle : retrofit des écrans legacy restants, retrait de
   `percent_indicator`, sélecteur de thème dans Profil
 - Activer le plan Blaze sur `greenaccess-16d25` puis `firebase deploy` (functions/rules/index)

@@ -4,9 +4,9 @@ name: CI
 # J1.2 — cache pub + Gradle pour accélérer les runs suivants
 # J2.2 — job "integration" : Firestore Security Rules testées contre l'émulateur
 #        (@firebase/rules-unit-testing, voir firestore-tests/)
-# J2.3/J2.4 — job "flutter_integration" : AuthRepository/ScoreRepository testés
-#        en vrai contre les émulateurs (flutter test --platform chrome), voir
-#        test/integration/
+# J2.3-J2.6 — job "flutter_integration" : AuthRepository/ScoreRepository/
+#        FinancementRepository/CoursRepository testés en vrai contre les
+#        émulateurs (flutter test --platform chrome), voir test/integration/
 
 on:
   push:

@@ -26,6 +26,10 @@ void main() {
   late AuthRepository repo;
 
   setUpAll(() async {
+    // `test()` (contrairement à `testWidgets()`) n'initialise pas le binding
+    // Flutter automatiquement — sans ça, les platform channels (donc les
+    // plugins firebase_*) ne fonctionnent pas encore.
+    TestWidgetsFlutterBinding.ensureInitialized();
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
     await FirebaseAuth.instance.useAuthEmulator(_emulatorHost, 9099);
     FirebaseFirestore.instance.useFirestoreEmulator(_emulatorHost, 8085);
