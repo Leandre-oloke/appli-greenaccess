@@ -234,6 +234,23 @@ export const onCourseCompleted = functions
 
 // ── Cloud Function : onDemandeSubmitted ──────────────────────────────────────
 
+// Extrait pour être testable indépendamment de admin.messaging() (aucun
+// émulateur FCM n'existe dans la Firebase Emulator Suite — appeler
+// messaging() en test contacterait un vrai serveur Google). Voir
+// functions/test/triggers.test.ts.
+export async function getPartenaireFinanceurTokens(): Promise<string[]> {
+  const partenairesSnap = await db
+    .collection("users")
+    .where("role", "==", "partenaireFinanceur")
+    .get();
+
+  const tokens: string[] = [];
+  partenairesSnap.forEach((doc) => {
+    if (doc.data().fcm_token) tokens.push(doc.data().fcm_token);
+  });
+  return tokens;
+}
+
 export const onDemandeSubmitted = functions
   .region("europe-west1")
   .firestore.document("demandes_financement/{demandeId}")
@@ -241,16 +258,7 @@ export const onDemandeSubmitted = functions
     const demande = snap.data();
     if (!demande || demande.statut !== "soumis") return;
 
-    // Notifier les partenaires financeurs éligibles (FCM)
-    const partenairesSnap = await db
-      .collection("users")
-      .where("role", "==", "partenaireFinanceur")
-      .get();
-
-    const tokens: string[] = [];
-    partenairesSnap.forEach((doc) => {
-      if (doc.data().fcm_token) tokens.push(doc.data().fcm_token);
-    });
+    const tokens = await getPartenaireFinanceurTokens();
 
     if (tokens.length > 0) {
       await admin.messaging().sendEachForMulticast({

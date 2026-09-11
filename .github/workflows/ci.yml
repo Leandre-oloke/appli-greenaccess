@@ -104,15 +104,20 @@ jobs:
 
       - run: npm install -g firebase-tools
 
-      # Tests unitaires purs de la formule de scoring (J2.9-J2.11) — pas
-      # besoin d'émulateur, juste Node (voir functions/test/).
+      # Tests unitaires purs de la formule de scoring (J2.9-J2.11, J2.12) —
+      # pas besoin d'émulateur, juste Node (voir functions/test/).
       - run: npm --prefix functions install
       - run: npm --prefix functions test
 
       - run: npm --prefix firestore-tests install
 
-      - name: Firestore Security Rules tests (émulateur)
-        run: firebase emulators:exec --project=greenaccess-16d25 --only firestore "npm --prefix firestore-tests test"
+      # Tests des triggers Firestore (J2.13-J2.14, functions/test/triggers.test.ts)
+      # et des Security Rules (firestore-tests/) — les deux ont besoin de
+      # l'émulateur Firestore, regroupés sous un seul démarrage.
+      - name: Tests backend contre l'émulateur Firestore
+        run: |
+          firebase emulators:exec --project=greenaccess-16d25 --only firestore \
+            "npm --prefix functions run test:emulator && npm --prefix firestore-tests test"
 
   build_web:
     name: build web

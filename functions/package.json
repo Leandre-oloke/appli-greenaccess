@@ -6,7 +6,8 @@
     "serve": "npm run build && firebase emulators:start --only functions",
     "deploy": "firebase deploy --only functions",
     "lint": "eslint --ext .ts .",
-    "test": "node --import tsx --test test/calculerScoreClimat.test.ts"
+    "test": "node --import tsx --test test/calculerScoreClimat.test.ts",
+    "test:emulator": "node --import tsx --test test/triggers.test.ts"
   },
   "engines": { "node": "20" },
   "main": "lib/index.js",

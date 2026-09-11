@@ -8,7 +8,7 @@
 // L'ordre des imports compte : ./testEnv doit être évalué avant src/index
 // (qui appelle admin.initializeApp() à son chargement) pour que GCLOUD_PROJECT
 // soit déjà défini — voir le commentaire dans testEnv.ts.
-import "./testEnv";
+import { testEnv } from "./testEnv";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -16,8 +16,11 @@ import {
   co2ToScore,
   certifToScore,
   resilienceToScore,
+  calculerScoreClimat,
   type ScoreCriteres,
 } from "../src/index";
+
+const wrappedCalculerScoreClimat = testEnv.wrap(calculerScoreClimat);
 
 const criteres = (overrides: Partial<ScoreCriteres> = {}): ScoreCriteres => ({
   scoreActivite: 0,
@@ -136,4 +139,34 @@ test('calculerScore arrondit correctement à 1 décimale (JS arrondit .5 vers le
   );
   // 18.75+12+4+5+9+2 = 50.75 → ×10=507.5 → round=508 → /10 = 50.8
   assert.equal(score, 50.8);
+});
+
+// ── J2.12 — Contrôle d'accès (unauthenticated / permission-denied) ─────────
+// Les deux vérifications d'auth sont les toutes premières lignes du handler,
+// avant tout accès Firestore (voir src/index.ts) — testable sans émulateur.
+
+test('calculerScoreClimat refuse un appel non authentifié', async () => {
+  await assert.rejects(
+    wrappedCalculerScoreClimat(
+      { userId: 'alice', typeActivite: 'Agriculture', alignementUemoa: 'Non', reductionCo2: 0, certifications: [], resilience: 1 },
+      { auth: undefined } as any,
+    ),
+    (err: any) => {
+      assert.equal(err.code, 'unauthenticated');
+      return true;
+    },
+  );
+});
+
+test("calculerScoreClimat refuse un appel pour le compte d'un autre utilisateur", async () => {
+  await assert.rejects(
+    wrappedCalculerScoreClimat(
+      { userId: 'alice', typeActivite: 'Agriculture', alignementUemoa: 'Non', reductionCo2: 0, certifications: [], resilience: 1 },
+      { auth: { uid: 'bob' } } as any,
+    ),
+    (err: any) => {
+      assert.equal(err.code, 'permission-denied');
+      return true;
+    },
+  );
 });

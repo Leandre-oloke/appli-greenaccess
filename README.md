@@ -254,11 +254,15 @@ Deux workflows dans `.github/workflows/` (Java 17 ou 21 selon le job, cache pub 
 | `ci.yml` | push sur toute branche + PR | `flutter analyze` → (`flutter test --coverage` ‖ `backend tests (functions + firestore rules)`, en parallèle après `analyze`) → (`build web` ‖ `build apk --debug`, en parallèle après `test`). Artefacts : `coverage-lcov`, `greenaccess-debug-apk` (7 jours). |
 | `build-apk.yml` | manuel (`workflow_dispatch`) ou push sur `feat/design-system-overhaul` | `flutter build apk --release --split-per-abi`. Artefact `greenaccess-apk` (arm64-v8a, armeabi-v7a, x86_64 séparés — l'arm64 tient sous 30 Mo pour une distribution directe). |
 
-Le job `integration` (`ci.yml`) exécute deux suites indépendantes :
+Le job `integration` (`ci.yml`) exécute trois suites :
 1. `npm --prefix functions test` — tests unitaires purs de `calculerScoreClimat`
-   (`functions/test/`, `node --test` + `tsx`, sans émulateur) : formule pondérée exacte,
-   bornes 0-100, arrondi.
-2. `firebase emulators:exec --only firestore` (Java 21 requis) exécute `firestore-tests/`
+   (`functions/test/calculerScoreClimat.test.ts`, `node --test` + `tsx`, sans émulateur) :
+   formule pondérée exacte, bornes 0-100, arrondi, contrôle d'accès (unauthenticated /
+   permission-denied).
+2. `npm --prefix functions run test:emulator` — tests des Cloud Functions déclenchées par
+   Firestore (`functions/test/triggers.test.ts`) : `onCourseCompleted` (badge déclenché +
+   idempotence), `onDemandeSubmitted` (ciblage des partenaires financeurs à notifier).
+3. `firebase emulators:exec --only firestore` (Java 21 requis) exécute `firestore-tests/`
    (Node.js, `@firebase/rules-unit-testing`, 22 tests) : isolation des documents
    `users/{uid}`, interdiction de s'auto-promouvoir `role: admin` (à la création comme à la
    mise à jour), cloisonnement par propriétaire de `scores_climat`, `demandes_financement`
@@ -267,8 +271,11 @@ Le job `integration` (`ci.yml`) exécute deux suites indépendantes :
    admin-only pour `produits_assurance`, `zones_alea`, `partenaires` et les notifications
    globales.
 
-Ce sont des tests du **backend** (formule de scoring + Security Rules), pas de l'app
-Flutter — voir §7 pour pourquoi ce choix.
+Les suites 2 et 3 tournent sous le **même** démarrage d'émulateur Firestore (une seule
+commande `firebase emulators:exec`, deux `npm` enchaînés) pour éviter de le lancer deux fois.
+
+Ce sont des tests du **backend** (Cloud Functions + Security Rules), pas de l'app Flutter —
+voir §7 pour pourquoi ce choix.
 
 Les deux régénèrent `android/app/google-services.json` à la volée depuis les clés déjà
 versionnées dans `lib/firebase_options.dart` (§5) — aucun secret de repo à configurer.
@@ -308,8 +315,8 @@ cd functions && npm test
 npm --prefix functions test
 ```
 
-Tests unitaires purs (`node --test` + `tsx`, aucun émulateur requis) de
-`calculerScoreClimat` (`functions/src/index.ts`) :
+`functions/test/calculerScoreClimat.test.ts` — tests unitaires purs (`node --test` + `tsx`,
+aucun émulateur requis, les vérifications d'auth rejettent avant tout accès Firestore) :
 - `calculerScore` applique exactement les poids du CDC (0.25/0.20/0.20/0.20/0.15 + bonus
   additif), vérifié critère par critère et en combinaison.
 - `co2ToScore` respecte les 6 paliers (0/20/40/60/80/100).
@@ -320,12 +327,25 @@ Tests unitaires purs (`node --test` + `tsx`, aucun émulateur requis) de
   `Math.max(0, …)` sur les trois fonctions.
 - Arrondi à 1 décimale vérifié sur un cas réel tombant pile sur `.x5` (JS arrondit `.5` vers
   le haut).
+- Contrôle d'accès : rejet `unauthenticated` (pas de `context.auth`) et `permission-denied`
+  (`context.auth.uid` ≠ `data.userId`), via `firebase-functions-test.wrap()`.
 
-`functions/test/testEnv.ts` initialise `firebase-functions-test` en mode offline (infra
-prête pour de futurs tests de triggers Firestore — `onCourseCompleted`,
-`onDemandeSubmitted`… — pas encore écrits) et fixe `GCLOUD_PROJECT` avant que
-`src/index.ts` ne s'importe, car ce fichier appelle `admin.initializeApp()` à son
-chargement.
+`functions/test/triggers.test.ts` — mêmes fonctions exportées, mais wrappe des triggers
+Firestore qui font de vraies lectures/écritures (`db = admin.firestore()`) : nécessite
+l'émulateur (`npm --prefix functions run test:emulator`, dans `firebase emulators:exec`) :
+- `onCourseCompleted` : crée le badge défini par le cours quand `badge_declenche` est vrai ;
+  idempotent (un deuxième déclenchement ne recrée pas/n'écrase pas le badge existant) ; ne
+  fait rien si le cours n'a pas de `badge_id` ou si le statut n'est pas `TERMINE`.
+- `onDemandeSubmitted` : `getPartenaireFinanceurTokens()` (extraite de la fonction pour être
+  testable) ne renvoie que les utilisateurs `role: partenaireFinanceur` ayant un
+  `fcm_token`. Le trigger lui-même n'est exercé qu'avec zéro token éligible, pour ne
+  **jamais** atteindre le vrai appel `admin.messaging()` — il n'existe pas d'émulateur FCM
+  dans la Firebase Emulator Suite, un appel réel contacterait un serveur Google avec des
+  identifiants de test invalides.
+
+`functions/test/testEnv.ts` initialise `firebase-functions-test` en mode offline et fixe
+`GCLOUD_PROJECT`/`FIRESTORE_EMULATOR_HOST` avant que `src/index.ts` ne s'importe, car ce
+fichier appelle `admin.initializeApp()`/`admin.firestore()` à son chargement.
 
 **Firestore Security Rules** (`firestore-tests/`, Node.js) :
 
@@ -434,9 +454,11 @@ seulement en local) :
 - Tests des Firestore Security Rules (`firestore-tests/`, 22 tests) contre l'émulateur, en CI
   (isolation utilisateur, anti-élévation de rôle, droits partenaireFinanceur/partenaireAssureur,
   cloisonnement Assurance/paiements/remboursements, accès admin-only) — voir §6ter
-- Tests unitaires purs de la formule `calculerScoreClimat` (`functions/test/`, 11 tests, sans
-  émulateur), en CI — poids CDC exacts, bornes 0-100, arrondi ; a révélé et corrigé un bug
-  réel de borne basse manquante (score négatif possible avec une entrée hors plage)
+- Tests des Cloud Functions (`functions/test/`, 20 tests), en CI — formule `calculerScoreClimat`
+  (poids CDC exacts, bornes 0-100, arrondi, contrôle d'accès), triggers `onCourseCompleted`
+  (badge + idempotence) et `onDemandeSubmitted` (ciblage partenaires financeurs) ; a révélé
+  et corrigé un bug réel de borne basse manquante (score négatif possible avec une entrée
+  hors plage)
 - Tests d'intégration Flutter écrits (`integration_test/`) pour AuthRepository,
   ScoreRepository, FinancementRepository et CoursRepository contre les émulateurs — leur
   écriture a révélé et corrigé 7 bugs réels de correspondance de schéma/config (client ↔
