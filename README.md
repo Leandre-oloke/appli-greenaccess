@@ -33,8 +33,10 @@ lib/
 ├── routes.dart               # AppRoutes + GoRouter (shell utilisateur + shell admin, redirections par rôle)
 ├── theme.dart                # shim de compat. : ré-exporte AppTheme (lib/ui/theme/) + AppColors
 ├── firebase_options.dart     # config Firebase générée par FlutterFire (clés client)
+├── firebase_env.dart         # sélectionne les options Firebase selon AppEnvironment (dev/prod)
 │
 ├── core/
+│   ├── env/app_env.dart                   # AppEnv dev/prod, --dart-define=APP_ENV
 │   ├── constants/app_colors.dart          # ré-exporte AppColors (voir ui/theme)
 │   ├── providers/prefs_provider.dart      # SharedPreferences injecté via override
 │   ├── providers/theme_mode_provider.dart # clair / sombre / système, persistant
@@ -148,6 +150,38 @@ Régénérer la config si besoin :
 ```bash
 flutterfire configure
 ```
+
+### Plan Blaze — requis pour déployer les Cloud Functions
+
+`greenaccess-16d25` est aujourd'hui sur le plan gratuit **Spark**. Google exige le passage
+au plan **Blaze** (paiement à l'usage) pour déployer la moindre Cloud Function — pas de
+contournement possible, c'est une contrainte de la plateforme, pas du projet. En pratique
+Blaze garde un niveau gratuit généreux (2M invocations/mois...) : le coût reste à 0 € tant
+que l'usage ne dépasse pas ces quotas.
+
+Activer : https://console.firebase.google.com/project/greenaccess-16d25/usage/details → *Modifier le plan* → *Blaze*.
+
+**En attendant**, deux façons de ne pas être bloqué :
+- **Émulateurs Firebase** (`firebase emulators:start`, voir §6bis) : développer et tester les
+  Cloud Functions en local, **sans Blaze ni carte bancaire**.
+- `ScoreRepository` a un **repli de calcul local** si `calculerScoreClimat` est injoignable
+  (fonction non déployée) — l'app reste utilisable de bout en bout sans déploiement. Ce repli
+  est temporaire : le CDC interdit tout calcul de score côté client, il sera retiré une fois
+  Blaze actif et les functions déployées (voir §8).
+
+### Environnements (dev / prod)
+
+`lib/core/env/app_env.dart` + `lib/firebase_env.dart` définissent le mécanisme de bascule :
+
+```bash
+flutter run --dart-define=APP_ENV=dev     # ou APP_ENV=prod (défaut si omis)
+```
+
+Un seul projet Firebase existe pour l'instant (`greenaccess-16d25`) — les deux valeurs
+pointent donc dessus, `APP_ENV=dev` ne change rien au backend pour le moment. Le mécanisme
+est prêt : créer un second projet Firebase de dev, régénérer ses clés avec `flutterfire
+configure --project=<projet-dev> --out=lib/firebase_options_dev.dart`, puis brancher ce
+fichier dans `firebase_env.dart` (instructions en commentaire dans ce fichier).
 
 ---
 
@@ -275,13 +309,17 @@ Exécutés automatiquement par `ci.yml` à chaque push.
   + workflow de build APK release à la demande (§6ter)
 - Chaîne Android mise à niveau pour Flutter 3.47 (Gradle/AGP/Kotlin)
 - Tests unitaires de ViewModels (46) + smoke test du design system, exécutés en CI
+- Mécanisme de bascule d'environnement (`APP_ENV=dev/prod`, `lib/firebase_env.dart`) — en
+  attente d'un second projet Firebase de dev pour devenir effectif (voir §5)
 
 **À faire / en cours**
 
 - Suite de la refonte visuelle : retrofit des écrans legacy restants, retrait de
   `percent_indicator`, sélecteur de thème dans Profil
 - Activer le plan Blaze sur `greenaccess-16d25` puis `firebase deploy` (functions/rules/index)
-- Finaliser la configuration Firebase par environnement (dev / prod)
+  — bloquant, aucun contournement (§5) ; développement des functions en attendant via les
+  émulateurs Firebase
+- Créer un projet Firebase de dev distinct et y brancher `firebase_env.dart`
 - Retirer le calcul de score de secours côté client (`ScoreRepository`), non conforme au CDC
 - Couverture de tests à étendre (repositories, widgets, parcours d'intégration/E2E)
 - Intégration réelle des API Mobile Money (actuellement flux applicatif)

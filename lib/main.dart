@@ -10,11 +10,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'core/env/app_env.dart';
 import 'core/providers/prefs_provider.dart';
 import 'core/providers/theme_mode_provider.dart';
 import 'theme.dart';
 import 'routes.dart';
-import 'firebase_options.dart';
+import 'firebase_env.dart';
 
 // Bascule émulateurs Firebase : flutter run --dart-define=USE_EMULATOR=true
 const bool kUseEmulator = bool.fromEnvironment('USE_EMULATOR');
@@ -24,14 +25,14 @@ const String kEmulatorHost =
 // Handler background FCM — doit être une fonction top-level
 @pragma('vm:entry-point')
 Future<void> _fcmBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await Firebase.initializeApp(options: currentFirebaseOptions());
 }
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (kDebugMode) Animate.restartOnHotReload = true;
   await initializeDateFormatting('fr', null);
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await Firebase.initializeApp(options: currentFirebaseOptions());
 
   // Cache Firestore offline (désactivé avec les émulateurs pour éviter les
   // incohérences de cache ; sur le Web le cache IndexedDB est géré par le SDK)
@@ -112,7 +113,7 @@ class _GreenAccessAppState extends ConsumerState<GreenAccessApp> {
     final router = ref.watch(routerProvider);
     final themeMode = ref.watch(themeModeProvider);
     return MaterialApp.router(
-      title: 'GreenAccess',
+      title: AppEnvironment.isDev ? 'GreenAccess (DEV)' : 'GreenAccess',
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: themeMode,
