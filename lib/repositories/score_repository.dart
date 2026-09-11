@@ -26,7 +26,10 @@ class ScoreRepository {
 
   ScoreRepository({FirebaseFirestore? firestore, FirebaseFunctions? functions})
       : _firestore = firestore ?? FirebaseFirestore.instance,
-        _functions = functions ?? FirebaseFunctions.instance;
+        // calculerScoreClimat est déployée sur europe-west1 (functions/src/index.ts,
+        // main.dart) — FirebaseFunctions.instance viserait us-central1 par défaut
+        // et l'appel échouerait systématiquement en "not-found" une fois déployé.
+        _functions = functions ?? FirebaseFunctions.instanceFor(region: 'europe-west1');
 
   /// Calcule le score en appelant la Cloud Function `calculerScoreClimat`.
   ///
@@ -39,7 +42,18 @@ class ScoreRepository {
         'calculerScoreClimat',
         options: HttpsCallableOptions(timeout: const Duration(seconds: 15)),
       );
-      final result = await callable.call({...inputs, 'userId': userId});
+      // La Cloud Function attend des clés camelCase (interface ScoreInput côté
+      // functions/src/index.ts) alors que le formulaire construit un Map en
+      // snake_case pour le repli local — on convertit ici plutôt que de faire
+      // porter ce détail d'intégration à l'écran appelant.
+      final result = await callable.call({
+        'userId': userId,
+        'typeActivite': inputs['type_activite'],
+        'alignementUemoa': inputs['alignement_uemoa'],
+        'reductionCo2': inputs['co2_evite'],
+        'certifications': inputs['certifications'],
+        'resilience': inputs['resilience'],
+      });
       final data = Map<String, dynamic>.from(result.data as Map);
       final score = ScoreClimatModel(
         id: data['scoreId'] ?? '',

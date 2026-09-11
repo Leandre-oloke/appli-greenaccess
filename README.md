@@ -251,7 +251,7 @@ Deux workflows dans `.github/workflows/` (Java 17, cache pub + cache Gradle) :
 
 | Workflow | Déclencheur | Contenu |
 |---|---|---|
-| `ci.yml` | push sur toute branche + PR | `flutter analyze` → (`flutter test --coverage` ‖ `firestore rules (emulator)`, en parallèle après `analyze`) → (`build web` ‖ `build apk --debug`, en parallèle après `test`). Artefacts : `coverage-lcov`, `greenaccess-debug-apk` (7 jours). |
+| `ci.yml` | push sur toute branche + PR | `flutter analyze` → (`flutter test --coverage` ‖ `firestore rules (emulator)` ‖ `flutter integration tests (emulator)`, en parallèle après `analyze`) → (`build web` ‖ `build apk --debug`, en parallèle après `test`). Artefacts : `coverage-lcov`, `greenaccess-debug-apk` (7 jours). |
 | `build-apk.yml` | manuel (`workflow_dispatch`) ou push sur `feat/design-system-overhaul` | `flutter build apk --release --split-per-abi`. Artefact `greenaccess-apk` (arm64-v8a, armeabi-v7a, x86_64 séparés — l'arm64 tient sous 30 Mo pour une distribution directe). |
 
 Le job `integration` (`ci.yml`) démarre l'émulateur Firestore (`firebase emulators:exec
@@ -304,10 +304,47 @@ dans la VM Dart, sans platform channels — les plugins `firebase_auth`/`cloud_f
 peuvent donc pas parler à un émulateur réel (c'est ce qui a cassé `widget_test.dart` avant sa
 réécriture, voir ci-dessus). `@firebase/rules-unit-testing` est la lib officielle pour ce cas :
 elle synthétise des contextes d'auth côté Node directement contre l'émulateur Firestore, sans
-même avoir besoin de l'émulateur Auth. Des tests d'intégration Flutter réels (repositories
-`AuthRepository`/`ScoreRepository`/`FinancementRepository`/`CoursRepository` contre les
-émulateurs) restent à faire via `flutter test --platform chrome` ou le package
-`integration_test` — plus risqué à mettre en place, pas encore tenté.
+même avoir besoin de l'émulateur Auth.
+
+**Tests d'intégration Flutter** (`test/integration/`, tag `integration`) :
+
+```bash
+firebase emulators:exec --only auth,firestore,functions \
+  "flutter test --tags=integration --platform chrome"
+```
+
+- `auth_repository_test.dart` — inscription/connexion/déconnexion, changement de mot de
+  passe, suppression de compte, contre l'émulateur Auth + Firestore réels.
+- `score_repository_test.dart` — calcule un vrai score via `calculerScoreClimat` sur
+  l'émulateur Functions, sauvegarde/lecture d'historique sur l'émulateur Firestore.
+
+Ces fichiers utilisent `flutter test --platform chrome` (et non la VM Dart par défaut) : c'est
+un vrai navigateur headless, avec les implémentations web des plugins `firebase_*`, donc de
+vrais platform channels — contrairement à un `flutter test` classique (VM, sans channels, voir
+ci-dessus). Exclus du job `test` normal via `--exclude-tags=integration` côté CI (ils ont
+besoin des émulateurs démarrés, pas juste de `flutter test`).
+
+En écrivant `score_repository_test.dart`, ces tests ont immédiatement révélé 5 bugs réels de
+correspondance de schéma entre `lib/repositories/score_repository.dart` et
+`functions/src/index.ts` (corrigés dans le même commit) :
+1. Le client envoyait des clés snake_case (`type_activite`…) à la Cloud Function, qui attend
+   du camelCase (`typeActivite`…) — les 3 premiers critères retombaient silencieusement sur
+   leurs valeurs par défaut.
+2. Les libellés de certification affichés par le formulaire (`Bio`, `Équitable`) ne
+   correspondaient à aucune clé de la table de score côté Cloud Function.
+3. La réponse de la Cloud Function n'incluait pas du tout `criteres` — chaque critère
+   s'affichait à 0 juste après un calcul serveur.
+4. Le document Firestore persisté par la Cloud Function utilisait des clés différentes
+   (`score_total`, `score_activite`…) de celles que `ScoreClimatModel.fromFirestore` /
+   `ScoreCriteres.fromMap` attendent (`score_total`→ok mais `criteres.activite` etc.) —
+   l'historique aurait aussi affiché des critères à 0.
+5. `ScoreRepository()` était construit sans région Cloud Functions explicite
+   (`lib/viewmodels/scoring_viewmodel.dart`), donc ciblait `us-central1` par défaut alors que
+   `calculerScoreClimat` est déployée sur `europe-west1` — chaque appel aurait échoué en
+   "not-found" une fois le plan Blaze activé.
+
+Restent à faire (repositories `FinancementRepository`/`CoursRepository`) selon le même
+principe.
 
 ---
 
@@ -336,6 +373,9 @@ même avoir besoin de l'émulateur Auth. Des tests d'intégration Flutter réels
 - Tests unitaires de ViewModels (46) + smoke test du design system, exécutés en CI
 - Tests des Firestore Security Rules (`firestore-tests/`) contre l'émulateur, en CI
   (isolation utilisateur, anti-élévation de rôle, droits partenaireFinanceur)
+- Tests d'intégration Flutter (`test/integration/`, `--platform chrome`) pour
+  AuthRepository et ScoreRepository contre les émulateurs — ont révélé et corrigé 5 bugs
+  réels de correspondance de schéma client/Cloud Function (voir §7)
 - Mécanisme de bascule d'environnement (`APP_ENV=dev/prod`, `lib/firebase_env.dart`) — en
   attente d'un second projet Firebase de dev pour devenir effectif (voir §5)
 
@@ -348,8 +388,8 @@ même avoir besoin de l'émulateur Auth. Des tests d'intégration Flutter réels
   émulateurs Firebase
 - Créer un projet Firebase de dev distinct et y brancher `firebase_env.dart`
 - Retirer le calcul de score de secours côté client (`ScoreRepository`), non conforme au CDC
-- Couverture de tests à étendre : repositories Flutter contre les émulateurs
-  (`flutter test --platform chrome` ou `integration_test`), widgets, parcours E2E
+- Couverture de tests à étendre : `FinancementRepository`/`CoursRepository` contre les
+  émulateurs (même principe que `test/integration/`), widgets, parcours E2E
 - Intégration réelle des API Mobile Money (actuellement flux applicatif)
 - Carte des aléas climatiques (Module Assurance, `flutter_map` déjà déclaré)
 

@@ -37,8 +37,14 @@ const SCORE_ACTIVITE_MAP: Record<string, number> = {
   Autre: 50,
 };
 
+// Les libellés courts ("Bio", "Équitable") sont ceux affichés par le
+// formulaire de scoring (scoring_form_screen.dart) ; les libellés longs
+// restent acceptés pour compat avec d'anciens appels. Alignés sur
+// ScoreRepository._certifMap côté Dart (repli local).
 const SCORE_CERTIF_MAP: Record<string, number> = {
+  "Bio": 25,
   "Agriculture biologique": 25,
+  "Équitable": 20,
   "Commerce équitable": 20,
   "ISO 14001": 30,
   "Carbone Neutre": 25,
@@ -161,25 +167,33 @@ export const calculerScoreClimat = functions
     const niveau = determineNiveau(scoreTotal);
     const suggestions = genererSuggestions(criteres, scoreTotal);
 
+    // Schéma identique à ScoreRepository.saveScore() côté Dart (repli local) —
+    // c'est ScoreClimatModel.fromFirestore / ScoreCriteres.fromMap qui relisent
+    // ce document (historique, résultat) : les clés doivent correspondre
+    // exactement, y compris pour le sous-objet "criteres".
+    const criteresDoc = {
+      activite: criteres.scoreActivite,
+      uemoa: criteres.scoreUemoa,
+      co2: criteres.scoreCo2,
+      certif: criteres.scoreCertif,
+      resilience: criteres.scoreResilience,
+      bonus_formation: criteres.bonusFormation,
+    };
     const scoreDoc = {
       userId: data.userId,
-      scoreTotal,
-      criteres: {
-        score_activite: criteres.scoreActivite,
-        score_uemoa: criteres.scoreUemoa,
-        score_co2: criteres.scoreCo2,
-        score_certif: criteres.scoreCertif,
-        score_resilience: criteres.scoreResilience,
-        bonus_formation: criteres.bonusFormation,
-      },
+      score_total: scoreTotal,
+      criteres: criteresDoc,
       niveau,
       suggestions,
-      dateCalcul: admin.firestore.FieldValue.serverTimestamp(),
-      versionAlgo: "1.0.0",
+      date_calcul: admin.firestore.FieldValue.serverTimestamp(),
+      version_algo: "v1-cloud",
     };
 
     const docRef = await db.collection("scores_climat").add(scoreDoc);
-    return { scoreId: docRef.id, scoreTotal, niveau, suggestions };
+    // criteres inclus explicitement : le client (ScoreRepository.calculate)
+    // construit son ScoreClimatModel depuis cette réponse, pas depuis une
+    // relecture Firestore.
+    return { scoreId: docRef.id, scoreTotal, criteres: criteresDoc, niveau, suggestions };
   });
 
 // ── Cloud Function : onCourseCompleted ───────────────────────────────────────
