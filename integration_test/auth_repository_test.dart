@@ -1,16 +1,29 @@
 // Test d'intégration AuthRepository contre les émulateurs Firebase (Auth +
-// Firestore). Tag "integration" : exclu de `flutter test` (VM, sans platform
-// channels — voir README.md §7) et exécuté séparément via
-// `flutter test --tags=integration --platform chrome`, à l'intérieur de
-// `firebase emulators:exec`. Voir .github/workflows/ci.yml, job
-// "flutter integration tests (emulator)".
-@Tags(['integration'])
-library;
-
+// Firestore), via le package `integration_test` officiel.
+//
+// BLOQUÉ pour le moment (voir README.md §7 pour le détail) : sous ce
+// Codespace, `Firebase.initializeApp()` reste indéfiniment en attente quel
+// que soit le mécanisme de test Flutter utilisé — vérifié à la fois via
+// `flutter test --platform chrome` (harnais `package:test`) et via
+// `flutter drive` + chromedriver (le mécanisme officiellement recommandé
+// par l'équipe FlutterFire pour ce cas, cf. issue firebase/flutterfire
+// #16727). Diagnostic mené en profondeur : un `await import(...)` du SDK
+// JS Firebase exécuté directement dans le même onglet Chrome (via une
+// commande WebDriver) réussit instantanément — le réseau, le CORS et
+// Chrome lui-même sont innocentés. Le blocage se situe dans l'interop
+// Dart↔JS de `firebase_core_web` (ou en aval), pas dans ce fichier. Piste
+// de reprise : Chrome non-headless + DevTools attaché pour lire la
+// console, ou basculer sur un émulateur Android/iOS réel.
+//
+// Ce fichier reste utile tel quel — l'écrire (et ses 3 voisins) a permis de
+// détecter et corriger 7 bugs réels de correspondance de schéma entre le
+// client Dart et les Cloud Functions/Firestore (voir score_repository_test.dart
+// et README.md §7), indépendamment de la question de son exécution en CI.
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:integration_test/integration_test.dart';
 import 'package:greenaccess/firebase_options.dart';
 import 'package:greenaccess/models/user_model.dart';
 import 'package:greenaccess/repositories/auth_repository.dart';
@@ -23,13 +36,11 @@ String _uniqueEmail(String tag) =>
     '$tag-${DateTime.now().microsecondsSinceEpoch}@greenaccess.test';
 
 void main() {
+  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+
   late AuthRepository repo;
 
   setUpAll(() async {
-    // `test()` (contrairement à `testWidgets()`) n'initialise pas le binding
-    // Flutter automatiquement — sans ça, les platform channels (donc les
-    // plugins firebase_*) ne fonctionnent pas encore.
-    TestWidgetsFlutterBinding.ensureInitialized();
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
     await FirebaseAuth.instance.useAuthEmulator(_emulatorHost, 9099);
     FirebaseFirestore.instance.useFirestoreEmulator(_emulatorHost, 8085);

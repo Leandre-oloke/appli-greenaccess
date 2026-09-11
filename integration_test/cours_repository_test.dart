@@ -1,6 +1,7 @@
 // Test d'intégration CoursRepository contre les émulateurs Firebase
-// (Auth + Firestore). Tag "integration" — voir README.md §7 et
-// test/integration/auth_repository_test.dart pour le contexte général.
+// (Auth + Firestore), via le package `integration_test` officiel.
+// Actuellement bloqué en exécution — voir auth_repository_test.dart (même
+// dossier) pour le diagnostic complet, et README.md §7.
 //
 // Les scénarios ici restent volontairement sur les écritures qu'un
 // utilisateur standard peut faire lui-même (progression, badges) : écrire un
@@ -8,13 +9,11 @@
 // soulève une question de sécurité distincte (voir note dans le README sur
 // la règle de création `users/{uid}` — un compte peut aujourd'hui se
 // déclarer admin dès sa création) qui n'est pas dans le périmètre de ce test.
-@Tags(['integration'])
-library;
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:integration_test/integration_test.dart';
 import 'package:greenaccess/firebase_options.dart';
 import 'package:greenaccess/repositories/cours_repository.dart';
 
@@ -32,10 +31,11 @@ Future<String> _signUp(String tag) async {
 }
 
 void main() {
+  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+
   late CoursRepository repo;
 
   setUpAll(() async {
-    TestWidgetsFlutterBinding.ensureInitialized();
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
     await FirebaseAuth.instance.useAuthEmulator(_emulatorHost, 9099);
     FirebaseFirestore.instance.useFirestoreEmulator(_emulatorHost, 8085);

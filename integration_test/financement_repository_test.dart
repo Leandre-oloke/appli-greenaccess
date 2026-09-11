@@ -1,13 +1,12 @@
 // Test d'intégration FinancementRepository contre les émulateurs Firebase
-// (Auth + Firestore). Tag "integration" — voir README.md §7 et
-// test/integration/auth_repository_test.dart pour le contexte général.
-@Tags(['integration'])
-library;
-
+// (Auth + Firestore), via le package `integration_test` officiel.
+// Actuellement bloqué en exécution — voir auth_repository_test.dart (même
+// dossier) pour le diagnostic complet, et README.md §7.
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:integration_test/integration_test.dart';
 import 'package:greenaccess/firebase_options.dart';
 import 'package:greenaccess/models/demande_financement_model.dart';
 import 'package:greenaccess/repositories/financement_repository.dart';
@@ -56,13 +55,11 @@ DemandeFinancementModel _demande(String userId, {StatutDemande statut = StatutDe
 }
 
 void main() {
+  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+
   late FinancementRepository repo;
 
   setUpAll(() async {
-    // `test()` (contrairement à `testWidgets()`) n'initialise pas le binding
-    // Flutter automatiquement — sans ça, les platform channels (donc les
-    // plugins firebase_*) ne fonctionnent pas encore.
-    TestWidgetsFlutterBinding.ensureInitialized();
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
     await FirebaseAuth.instance.useAuthEmulator(_emulatorHost, 9099);
     FirebaseFirestore.instance.useFirestoreEmulator(_emulatorHost, 8085);

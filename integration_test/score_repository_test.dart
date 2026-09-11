@@ -1,23 +1,21 @@
 // Test d'intégration ScoreRepository contre les émulateurs Firebase (Auth +
-// Firestore + Functions). Tag "integration" : exclu de `flutter test` (VM,
-// sans platform channels — voir README.md §7) et exécuté séparément via
-// `flutter test --tags=integration --platform chrome`, à l'intérieur de
-// `firebase emulators:exec`. Voir .github/workflows/ci.yml, job
-// "flutter integration tests (emulator)".
+// Firestore + Functions), via le package `integration_test` officiel.
+// Actuellement bloqué en exécution — voir auth_repository_test.dart (même
+// dossier) pour le diagnostic complet, et README.md §7.
 //
-// Ce fichier a été écrit en préparant la couverture J2.4 et a immédiatement
-// révélé 3 bugs réels de correspondance de clés entre le client Dart et la
-// Cloud Function `calculerScoreClimat` (functions/src/index.ts) — corrigés
-// dans le même commit : clés d'entrée snake_case→camelCase, "criteres"
-// absent de la réponse callable, clés du document Firestore persisté.
-@Tags(['integration'])
-library;
-
+// Ce fichier a été écrit en préparant la couverture de ScoreRepository et a
+// immédiatement révélé 5 bugs réels de correspondance de clés entre le
+// client Dart et la Cloud Function `calculerScoreClimat`
+// (functions/src/index.ts) — corrigés dans le même commit : clés d'entrée
+// snake_case→camelCase, libellés de certification manquants côté serveur,
+// "criteres" absent de la réponse callable, clés du document Firestore
+// persisté, région Cloud Functions par défaut incorrecte.
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:integration_test/integration_test.dart';
 import 'package:greenaccess/firebase_options.dart';
 import 'package:greenaccess/models/score_climat_model.dart';
 import 'package:greenaccess/repositories/score_repository.dart';
@@ -28,13 +26,11 @@ String _uniqueEmail(String tag) =>
     '$tag-${DateTime.now().microsecondsSinceEpoch}@greenaccess.test';
 
 void main() {
+  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+
   late ScoreRepository repo;
 
   setUpAll(() async {
-    // `test()` (contrairement à `testWidgets()`) n'initialise pas le binding
-    // Flutter automatiquement — sans ça, les platform channels (donc les
-    // plugins firebase_*) ne fonctionnent pas encore.
-    TestWidgetsFlutterBinding.ensureInitialized();
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
     await FirebaseAuth.instance.useAuthEmulator(_emulatorHost, 9099);
     FirebaseFirestore.instance.useFirestoreEmulator(_emulatorHost, 8085);

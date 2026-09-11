@@ -251,7 +251,7 @@ Deux workflows dans `.github/workflows/` (Java 17, cache pub + cache Gradle) :
 
 | Workflow | Déclencheur | Contenu |
 |---|---|---|
-| `ci.yml` | push sur toute branche + PR | `flutter analyze` → (`flutter test --coverage` ‖ `firestore rules (emulator)` ‖ `flutter integration tests (emulator)`, en parallèle après `analyze`) → (`build web` ‖ `build apk --debug`, en parallèle après `test`). Artefacts : `coverage-lcov`, `greenaccess-debug-apk` (7 jours). |
+| `ci.yml` | push sur toute branche + PR | `flutter analyze` → (`flutter test --coverage` ‖ `firestore rules (emulator)`, en parallèle après `analyze`) → (`build web` ‖ `build apk --debug`, en parallèle après `test`). Artefacts : `coverage-lcov`, `greenaccess-debug-apk` (7 jours). |
 | `build-apk.yml` | manuel (`workflow_dispatch`) ou push sur `feat/design-system-overhaul` | `flutter build apk --release --split-per-abi`. Artefact `greenaccess-apk` (arm64-v8a, armeabi-v7a, x86_64 séparés — l'arm64 tient sous 30 Mo pour une distribution directe). |
 
 Le job `integration` (`ci.yml`) démarre l'émulateur Firestore (`firebase emulators:exec
@@ -306,12 +306,7 @@ réécriture, voir ci-dessus). `@firebase/rules-unit-testing` est la lib officie
 elle synthétise des contextes d'auth côté Node directement contre l'émulateur Firestore, sans
 même avoir besoin de l'émulateur Auth.
 
-**Tests d'intégration Flutter** (`test/integration/`, tag `integration`) :
-
-```bash
-firebase emulators:exec --only auth,firestore,functions \
-  "flutter test --tags=integration --platform chrome"
-```
+**Tests d'intégration Flutter** (`integration_test/`, package officiel `integration_test`) :
 
 - `auth_repository_test.dart` — inscription/connexion/déconnexion, changement de mot de
   passe, suppression de compte, contre l'émulateur Auth + Firestore réels.
@@ -322,13 +317,30 @@ firebase emulators:exec --only auth,firestore,functions \
 - `cours_repository_test.dart` — repli sur les cours de démo, progression + déclenchement de
   badges (≥70% au quiz), idempotence du badge "Assuré Climat".
 
-Ces fichiers utilisent `flutter test --platform chrome` (et non la VM Dart par défaut) : c'est
-un vrai navigateur headless, avec les implémentations web des plugins `firebase_*`, donc de
-vrais platform channels — contrairement à un `flutter test` classique (VM, sans channels, voir
-ci-dessus). Exclus du job `test` normal via `--exclude-tags=integration` côté CI (ils ont
-besoin des émulateurs démarrés, pas juste de `flutter test`).
+⚠️ **Ces 4 fichiers ne tournent pas encore en CI ni en local.** Cause identifiée avec
+certitude, mais pas encore résolue : dans ce Codespace, `Firebase.initializeApp()` reste
+indéfiniment en attente — testé et reproduit de deux façons :
+1. `flutter test --tags=integration --platform chrome` (le harnais `package:test` générique).
+2. `flutter drive --driver=test_driver/integration_test.dart --target=integration_test/<file>.dart
+   -d web-server --browser-name=chrome` avec `chromedriver` installé à la version exacte de
+   Chrome — le mécanisme officiellement recommandé par l'équipe FlutterFire pour ce cas
+   ([firebase/flutterfire#16727](https://github.com/firebase/flutterfire/issues/16727)).
 
-En écrivant `score_repository_test.dart`, ces tests ont immédiatement révélé 5 bugs réels de
+Dans les deux cas, la page se charge correctement (titre "GreenAccess", `$dartMainExecuted` à
+`true`), le CPU retombe à 0% (donc pas une compilation lente), et un `await import(...)` du SDK
+JS Firebase exécuté **directement dans le même onglet Chrome** via une commande WebDriver
+réussit **instantanément** — ce qui innocente le réseau, le CORS et Chrome. Le blocage se situe
+donc dans l'interop Dart↔JS de `firebase_core_web` (ou juste après), pas dans le code de ce
+dépôt ni dans l'infrastructure réseau/émulateurs. Pistes de reprise non testées faute de temps :
+Chrome non-headless + DevTools attaché pour lire la console du navigateur, ou basculer ce test
+précis sur un émulateur Android/iOS (ce que fait l'exemple officiel FlutterFire).
+
+Le job CI dédié a été retiré (il échouait/expirait systématiquement) plutôt que laissé rouge en
+permanence. `test_driver/integration_test.dart` et la dépendance `integration_test` restent en
+place, prêts à resservir dès que ce blocage est levé.
+
+Écrire ces 4 fichiers est resté utile indépendamment de leur exécution : la relecture attentive
+du code qu'ils ont demandée a immédiatement révélé 5 bugs réels de
 correspondance de schéma entre `lib/repositories/score_repository.dart` et
 `functions/src/index.ts` (corrigés dans le même commit) :
 1. Le client envoyait des clés snake_case (`type_activite`…) à la Cloud Function, qui attend
@@ -358,11 +370,6 @@ seulement en local) :
    l'émulateur Functions refuse (il exige une version exacte parmi 20/22/24). Corrigé en
    `"20"`.
 
-Un troisième point, plus subtil, a nécessité `TestWidgetsFlutterBinding.ensureInitialized()`
-en tête de chaque `setUpAll()` : contrairement à `testWidgets()`, un simple `test()` n'active
-pas automatiquement le binding Flutter, donc les platform channels (et donc les plugins
-`firebase_*`) ne sont pas encore utilisables au moment de `Firebase.initializeApp()`.
-
 ---
 
 ## 8. État d'avancement
@@ -390,10 +397,11 @@ pas automatiquement le binding Flutter, donc les platform channels (et donc les 
 - Tests unitaires de ViewModels (46) + smoke test du design system, exécutés en CI
 - Tests des Firestore Security Rules (`firestore-tests/`) contre l'émulateur, en CI
   (isolation utilisateur, anti-élévation de rôle, droits partenaireFinanceur)
-- Tests d'intégration Flutter (`test/integration/`, `--platform chrome`) pour
-  AuthRepository, ScoreRepository, FinancementRepository et CoursRepository contre les
-  émulateurs — ont révélé et corrigé 7 bugs réels de correspondance de schéma/config
-  (client ↔ Cloud Function, index Firestore, version Node) — voir §7
+- Tests d'intégration Flutter écrits (`integration_test/`) pour AuthRepository,
+  ScoreRepository, FinancementRepository et CoursRepository contre les émulateurs — leur
+  écriture a révélé et corrigé 7 bugs réels de correspondance de schéma/config (client ↔
+  Cloud Function, index Firestore, version Node) ; **pas encore exécutables en CI**
+  (`Firebase.initializeApp()` bloque indéfiniment sous ce Codespace — voir §7)
 - Mécanisme de bascule d'environnement (`APP_ENV=dev/prod`, `lib/firebase_env.dart`) — en
   attente d'un second projet Firebase de dev pour devenir effectif (voir §5)
 
@@ -413,8 +421,9 @@ pas automatiquement le binding Flutter, donc les platform channels (et donc les 
   émulateurs Firebase
 - Créer un projet Firebase de dev distinct et y brancher `firebase_env.dart`
 - Retirer le calcul de score de secours côté client (`ScoreRepository`), non conforme au CDC
-- Couverture de tests à étendre : `FinancementRepository`/`CoursRepository` contre les
-  émulateurs (même principe que `test/integration/`), widgets, parcours E2E
+- Débloquer l'exécution de `integration_test/` (Chrome non-headless + DevTools, ou
+  émulateur Android/iOS) — voir le diagnostic détaillé en §7
+- Couverture de tests à étendre : widgets, parcours E2E
 - Intégration réelle des API Mobile Money (actuellement flux applicatif)
 - Carte des aléas climatiques (Module Assurance, `flutter_map` déjà déclaré)
 
