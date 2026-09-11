@@ -105,10 +105,12 @@ async function getBonusFormation(userId: string): Promise<number> {
   return Math.min(15, completedCourses * 2 + badges * 3);
 }
 
+// Paliers CDC §3 : 0-29 Insuffisant · 30-59 Intermédiaire · 60-79 Bon · 80-100 Excellent
+// (alignés sur ScoreClimatModel.niveauFromScore côté Flutter).
 function determineNiveau(score: number): string {
   if (score >= 80) return "excellent";
   if (score >= 60) return "bon";
-  if (score >= 40) return "intermediaire";
+  if (score >= 30) return "intermediaire";
   return "insuffisant";
 }
 

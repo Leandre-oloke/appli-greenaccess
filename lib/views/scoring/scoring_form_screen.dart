@@ -49,6 +49,9 @@ class _ScoringFormScreenState extends ConsumerState<ScoringFormScreen> {
     final score = await ref
         .read(scoringViewModelProvider(userId).notifier)
         .soumettreCriteres(data);
+    // En cas d'échec, l'erreur reste dans ScoringState.error et s'affiche
+    // dans le bandeau au-dessus du stepper (voir build()) — pas de calcul de
+    // repli côté client (CDC §4.4).
     if (mounted && score != null) {
       context.pushReplacement(AppRoutes.scoreResult);
     }
@@ -70,100 +73,125 @@ class _ScoringFormScreenState extends ConsumerState<ScoringFormScreen> {
     return Scaffold(
       appBar: const GaAppBar(title: 'Score Climat'),
       body: SafeArea(
-        child: GaStepper(
-          currentStep: _step,
-          busy: state.isCalculating,
-          finishLabel: 'Calculer mon score',
-          onStepContinue: _continue,
-          onStepCancel: () => setState(() => _step--),
-          steps: [
-            GaStep(
-              title: "Quelle est votre activité ?",
-              content: GaChoiceGroup<String>(
-                options: [
-                  for (final (name, emoji) in _activites)
-                    GaChoiceOption(value: name, label: name, emoji: emoji),
-                ],
-                selected: {_typeActivite},
-                onChanged: (s) => setState(() => _typeActivite = s.first),
-              ),
-            ),
-            GaStep(
-              title: 'Alignement à la taxonomie UEMOA',
-              subtitle: 'Critères verts AMF-UEMOA',
-              content: GaChoiceGroup<String>(
-                options: const [
-                  GaChoiceOption(
-                      value: 'Oui',
-                      label: 'Oui, pleinement',
-                      description: 'Activité conforme aux critères verts',
-                      icon: Icons.verified_rounded),
-                  GaChoiceOption(
-                      value: 'Partiel',
-                      label: 'Partiellement',
-                      description: 'Conformité en cours',
-                      icon: Icons.timelapse_rounded),
-                  GaChoiceOption(
-                      value: 'Non',
-                      label: 'Non / je ne sais pas',
-                      icon: Icons.help_outline_rounded),
-                ],
-                selected: {_alignementUemoa},
-                onChanged: (s) => setState(() => _alignementUemoa = s.first),
-              ),
-            ),
-            GaStep(
-              title: 'Impact CO₂ estimé',
-              content: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Text(
-                    _co2Evite.round().toString(),
-                    style: GaTypography.numeric(context.gaTokens, size: 52),
+        child: Column(
+          children: [
+            if (state.error != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                    GaSpacing.lg, GaSpacing.sm, GaSpacing.lg, 0),
+                child: GaInfoBanner(
+                  kind: GaBannerKind.error,
+                  title: 'Calcul du score indisponible',
+                  message: state.error!,
+                  action: GaSecondaryButton.ghost(
+                    label: 'Voir les cours',
+                    onPressed: () => context.push(AppRoutes.courseList),
                   ),
-                  Text('tonnes de CO₂ évitées par an',
-                      style: Theme.of(context).textTheme.bodyMedium),
-                  const SizedBox(height: GaSpacing.lg),
-                  Slider(
-                    value: _co2Evite,
-                    max: 500,
-                    divisions: 50,
-                    label: '${_co2Evite.round()} t',
-                    onChanged: (v) => setState(() => _co2Evite = v),
+                ),
+              ),
+            Expanded(
+              child: GaStepper(
+                currentStep: _step,
+                busy: state.isCalculating,
+                finishLabel: 'Calculer mon score',
+                onStepContinue: _continue,
+                onStepCancel: () => setState(() => _step--),
+                steps: [
+                  GaStep(
+                    title: "Quelle est votre activité ?",
+                    content: GaChoiceGroup<String>(
+                      options: [
+                        for (final (name, emoji) in _activites)
+                          GaChoiceOption(
+                              value: name, label: name, emoji: emoji),
+                      ],
+                      selected: {_typeActivite},
+                      onChanged: (s) =>
+                          setState(() => _typeActivite = s.first),
+                    ),
+                  ),
+                  GaStep(
+                    title: 'Alignement à la taxonomie UEMOA',
+                    subtitle: 'Critères verts AMF-UEMOA',
+                    content: GaChoiceGroup<String>(
+                      options: const [
+                        GaChoiceOption(
+                            value: 'Oui',
+                            label: 'Oui, pleinement',
+                            description: 'Activité conforme aux critères verts',
+                            icon: Icons.verified_rounded),
+                        GaChoiceOption(
+                            value: 'Partiel',
+                            label: 'Partiellement',
+                            description: 'Conformité en cours',
+                            icon: Icons.timelapse_rounded),
+                        GaChoiceOption(
+                            value: 'Non',
+                            label: 'Non / je ne sais pas',
+                            icon: Icons.help_outline_rounded),
+                      ],
+                      selected: {_alignementUemoa},
+                      onChanged: (s) =>
+                          setState(() => _alignementUemoa = s.first),
+                    ),
+                  ),
+                  GaStep(
+                    title: 'Impact CO₂ estimé',
+                    content: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          _co2Evite.round().toString(),
+                          style:
+                              GaTypography.numeric(context.gaTokens, size: 52),
+                        ),
+                        Text('tonnes de CO₂ évitées par an',
+                            style: Theme.of(context).textTheme.bodyMedium),
+                        const SizedBox(height: GaSpacing.lg),
+                        Slider(
+                          value: _co2Evite,
+                          max: 500,
+                          divisions: 50,
+                          label: '${_co2Evite.round()} t',
+                          onChanged: (v) => setState(() => _co2Evite = v),
+                        ),
+                      ],
+                    ),
+                  ),
+                  GaStep(
+                    title: 'Vos certifications',
+                    subtitle: 'Plusieurs choix possibles',
+                    content: GaChoiceGroup<String>(
+                      multi: true,
+                      options: [
+                        for (final (name, emoji) in _certifs)
+                          GaChoiceOption(
+                              value: name, label: name, emoji: emoji),
+                      ],
+                      selected: _certifications.toSet(),
+                      onChanged: (s) => setState(() {
+                        _certifications
+                          ..clear()
+                          ..addAll(s);
+                      }),
+                    ),
+                  ),
+                  GaStep(
+                    title: 'Votre résilience climatique',
+                    subtitle: 'Plan d\'adaptation, diversification…',
+                    content: GaChoiceGroup<int>(
+                      options: const [
+                        GaChoiceOption(value: 1, label: '1 — Faible'),
+                        GaChoiceOption(value: 2, label: '2 — Limitée'),
+                        GaChoiceOption(value: 3, label: '3 — Moyenne'),
+                        GaChoiceOption(value: 4, label: '4 — Bonne'),
+                        GaChoiceOption(value: 5, label: '5 — Très bonne'),
+                      ],
+                      selected: {_resilience},
+                      onChanged: (s) => setState(() => _resilience = s.first),
+                    ),
                   ),
                 ],
-              ),
-            ),
-            GaStep(
-              title: 'Vos certifications',
-              subtitle: 'Plusieurs choix possibles',
-              content: GaChoiceGroup<String>(
-                multi: true,
-                options: [
-                  for (final (name, emoji) in _certifs)
-                    GaChoiceOption(value: name, label: name, emoji: emoji),
-                ],
-                selected: _certifications.toSet(),
-                onChanged: (s) => setState(() {
-                  _certifications
-                    ..clear()
-                    ..addAll(s);
-                }),
-              ),
-            ),
-            GaStep(
-              title: 'Votre résilience climatique',
-              subtitle: 'Plan d\'adaptation, diversification…',
-              content: GaChoiceGroup<int>(
-                options: const [
-                  GaChoiceOption(value: 1, label: '1 — Faible'),
-                  GaChoiceOption(value: 2, label: '2 — Limitée'),
-                  GaChoiceOption(value: 3, label: '3 — Moyenne'),
-                  GaChoiceOption(value: 4, label: '4 — Bonne'),
-                  GaChoiceOption(value: 5, label: '5 — Très bonne'),
-                ],
-                selected: {_resilience},
-                onChanged: (s) => setState(() => _resilience = s.first),
               ),
             ),
           ],
