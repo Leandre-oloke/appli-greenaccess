@@ -255,11 +255,14 @@ Deux workflows dans `.github/workflows/` (Java 17 ou 21 selon le job, cache pub 
 | `build-apk.yml` | manuel (`workflow_dispatch`) ou push sur `feat/design-system-overhaul` | `flutter build apk --release --split-per-abi`. Artefact `greenaccess-apk` (arm64-v8a, armeabi-v7a, x86_64 séparés — l'arm64 tient sous 30 Mo pour une distribution directe). |
 
 Le job `integration` (`ci.yml`) démarre l'émulateur Firestore (`firebase emulators:exec
---only firestore`, Java 17 requis) et y exécute `firestore-tests/` (Node.js,
-`@firebase/rules-unit-testing`) : isolation des documents `users/{uid}`, interdiction de
-s'auto-promouvoir `role: admin`, cloisonnement des `scores_climat` et `demandes_financement`
-par propriétaire, droits d'écriture `partenaireFinanceur`. C'est un test des **Security
-Rules**, pas de l'app Flutter — voir §7 pour pourquoi ce choix.
+--only firestore`, Java 21 requis) et y exécute `firestore-tests/` (Node.js,
+`@firebase/rules-unit-testing`, 22 tests) : isolation des documents `users/{uid}`,
+interdiction de s'auto-promouvoir `role: admin` (à la création comme à la mise à jour),
+cloisonnement par propriétaire de `scores_climat`, `demandes_financement` (+ sous-collection
+`remboursements`), `contrats_assurance`, `sinistres` et `paiements`, droits d'écriture
+`partenaireFinanceur`/`partenaireAssureur`, lecture ouverte / écriture admin-only pour
+`produits_assurance`, `zones_alea`, `partenaires` et les notifications globales. C'est un
+test des **Security Rules**, pas de l'app Flutter — voir §7 pour pourquoi ce choix.
 
 Les deux régénèrent `android/app/google-services.json` à la volée depuis les clés déjà
 versionnées dans `lib/firebase_options.dart` (§5) — aucun secret de repo à configurer.
@@ -395,8 +398,9 @@ seulement en local) :
   + workflow de build APK release à la demande (§6ter)
 - Chaîne Android mise à niveau pour Flutter 3.47 (Gradle/AGP/Kotlin)
 - Tests unitaires de ViewModels (46) + smoke test du design system, exécutés en CI
-- Tests des Firestore Security Rules (`firestore-tests/`) contre l'émulateur, en CI
-  (isolation utilisateur, anti-élévation de rôle, droits partenaireFinanceur)
+- Tests des Firestore Security Rules (`firestore-tests/`, 22 tests) contre l'émulateur, en CI
+  (isolation utilisateur, anti-élévation de rôle, droits partenaireFinanceur/partenaireAssureur,
+  cloisonnement Assurance/paiements/remboursements, accès admin-only) — voir §6ter
 - Tests d'intégration Flutter écrits (`integration_test/`) pour AuthRepository,
   ScoreRepository, FinancementRepository et CoursRepository contre les émulateurs — leur
   écriture a révélé et corrigé 7 bugs réels de correspondance de schéma/config (client ↔
@@ -407,13 +411,6 @@ seulement en local) :
 
 **À faire / en cours**
 
-- ⚠️ **Sécurité à trancher** : `firestore.rules` autorise `allow create: if isOwner(userId)`
-  sur `users/{userId}` sans restreindre le champ `role` — l'app envoie toujours `role: 'user'`
-  à l'inscription (aucun écran ne permet de choisir), mais un client qui écrirait directement
-  dans Firestore (hors app) pourrait en théorie se créer un compte `role: 'admin'` dès la
-  création. Non exploité aujourd'hui, non corrigé ici (changerait le contrat des Security
-  Rules, testé par `firestore-tests/` — mérite une décision explicite plutôt qu'une correction
-  silencieuse). Fix probable : `allow create: if isOwner(userId) && request.resource.data.role == 'user';`
 - Suite de la refonte visuelle : retrofit des écrans legacy restants, retrait de
   `percent_indicator`, sélecteur de thème dans Profil
 - Activer le plan Blaze sur `greenaccess-16d25` puis `firebase deploy` (functions/rules/index)
