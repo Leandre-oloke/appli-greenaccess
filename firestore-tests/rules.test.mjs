@@ -65,8 +65,9 @@ test('un utilisateur peut modifier un champ non sensible de son propre profil', 
 
 test("un admin peut lire le profil d'un autre utilisateur", async () => {
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
-    await ctx.firestore().doc('users/alice').set({ nom: 'Alice', role: 'user' });
-    await ctx.firestore().doc('users/admin1').set({ nom: 'Admin', role: 'admin' });
+    const db = ctx.firestore();
+    await db.doc('users/alice').set({ nom: 'Alice', role: 'user' });
+    await db.doc('users/admin1').set({ nom: 'Admin', role: 'admin' });
   });
   const admin = testEnv.authenticatedContext('admin1').firestore();
   await assertSucceeds(admin.doc('users/alice').get());
@@ -74,8 +75,9 @@ test("un admin peut lire le profil d'un autre utilisateur", async () => {
 
 test('un utilisateur ne peut pas lire le profil d’un autre utilisateur', async () => {
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
-    await ctx.firestore().doc('users/alice').set({ nom: 'Alice', role: 'user' });
-    await ctx.firestore().doc('users/bob').set({ nom: 'Bob', role: 'user' });
+    const db = ctx.firestore();
+    await db.doc('users/alice').set({ nom: 'Alice', role: 'user' });
+    await db.doc('users/bob').set({ nom: 'Bob', role: 'user' });
   });
   const bob = testEnv.authenticatedContext('bob').firestore();
   await assertFails(bob.doc('users/alice').get());
@@ -110,14 +112,11 @@ test('une demande de financement est invisible pour un autre utilisateur', async
 
 test('un partenaireFinanceur peut mettre à jour une demande de financement', async () => {
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
-    await ctx
-      .firestore()
+    const db = ctx.firestore();
+    await db
       .doc('demandes_financement/d1')
       .set({ userId: 'alice', statut: 'brouillon', montant: 1000 });
-    await ctx
-      .firestore()
-      .doc('users/financeur1')
-      .set({ nom: 'Financeur', role: 'partenaireFinanceur' });
+    await db.doc('users/financeur1').set({ nom: 'Financeur', role: 'partenaireFinanceur' });
   });
   const financeur = testEnv.authenticatedContext('financeur1').firestore();
   await assertSucceeds(
