@@ -7,7 +7,7 @@ const db = admin.firestore();
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-interface ScoreCriteres {
+export interface ScoreCriteres {
   scoreActivite: number;   // 0-100 : Agriculture=80, Energie=90, Recyclage=85...
   scoreUemoa: number;      // 0-100 : Conforme=100, Partiel=60, NonConforme=20
   scoreCo2: number;        // 0-100 : calculé sur réduction CO2
@@ -16,7 +16,7 @@ interface ScoreCriteres {
   bonusFormation: number;  // 0-15 : +2 à +5 pts par cours certifié
 }
 
-interface ScoreInput {
+export interface ScoreInput {
   userId: string;
   typeActivite: string;
   alignementUemoa: string; // "Oui" | "Partiel" | "Non"
@@ -27,7 +27,7 @@ interface ScoreInput {
 
 // ── Constantes métier ────────────────────────────────────────────────────────
 
-const SCORE_ACTIVITE_MAP: Record<string, number> = {
+export const SCORE_ACTIVITE_MAP: Record<string, number> = {
   Agriculture: 75,
   "Énergie renouvelable": 90,
   Recyclage: 85,
@@ -41,7 +41,7 @@ const SCORE_ACTIVITE_MAP: Record<string, number> = {
 // formulaire de scoring (scoring_form_screen.dart) ; les libellés longs
 // restent acceptés pour compat avec d'anciens appels. Alignés sur
 // ScoreRepository._certifMap côté Dart (repli local).
-const SCORE_CERTIF_MAP: Record<string, number> = {
+export const SCORE_CERTIF_MAP: Record<string, number> = {
   "Bio": 25,
   "Agriculture biologique": 25,
   "Équitable": 20,
@@ -50,7 +50,7 @@ const SCORE_CERTIF_MAP: Record<string, number> = {
   "Carbone Neutre": 25,
 };
 
-const UEMOA_SCORE_MAP: Record<string, number> = {
+export const UEMOA_SCORE_MAP: Record<string, number> = {
   Oui: 100,
   Partiel: 60,
   Non: 20,
@@ -60,7 +60,7 @@ const UEMOA_SCORE_MAP: Record<string, number> = {
  * Calcule le Score Climat ESG selon la formule du CDC :
  * Score = (Activité×0.25) + (UEMOA×0.20) + (CO2×0.20) + (Certif×0.20) + (Résilience×0.15) + BonusFormation
  */
-function calculerScore(input: ScoreCriteres): number {
+export function calculerScore(input: ScoreCriteres): number {
   const score =
     input.scoreActivite * 0.25 +
     input.scoreUemoa * 0.20 +
@@ -69,10 +69,13 @@ function calculerScore(input: ScoreCriteres): number {
     input.scoreResilience * 0.15 +
     input.bonusFormation;
 
-  return Math.min(100, Math.round(score * 10) / 10);
+  // Borne basse en plus de la borne haute : un critère hors plage (ex.
+  // resilience négatif, non revalidé côté client) ne doit jamais produire
+  // un score total négatif.
+  return Math.max(0, Math.min(100, Math.round(score * 10) / 10));
 }
 
-function co2ToScore(reductionCo2: number): number {
+export function co2ToScore(reductionCo2: number): number {
   if (reductionCo2 >= 500) return 100;
   if (reductionCo2 >= 200) return 80;
   if (reductionCo2 >= 100) return 60;
@@ -81,13 +84,13 @@ function co2ToScore(reductionCo2: number): number {
   return 0;
 }
 
-function certifToScore(certifications: string[]): number {
+export function certifToScore(certifications: string[]): number {
   const total = certifications.reduce((sum, c) => sum + (SCORE_CERTIF_MAP[c] ?? 0), 0);
-  return Math.min(100, total);
+  return Math.max(0, Math.min(100, total));
 }
 
-function resilienceToScore(resilience: number): number {
-  return Math.min(100, resilience * 20);
+export function resilienceToScore(resilience: number): number {
+  return Math.max(0, Math.min(100, resilience * 20));
 }
 
 async function getBonusFormation(userId: string): Promise<number> {
@@ -113,7 +116,7 @@ async function getBonusFormation(userId: string): Promise<number> {
 
 // Paliers CDC §3 : 0-29 Insuffisant · 30-59 Intermédiaire · 60-79 Bon · 80-100 Excellent
 // (alignés sur ScoreClimatModel.niveauFromScore côté Flutter).
-function determineNiveau(score: number): string {
+export function determineNiveau(score: number): string {
   if (score >= 80) return "excellent";
   if (score >= 60) return "bon";
   if (score >= 30) return "intermediaire";

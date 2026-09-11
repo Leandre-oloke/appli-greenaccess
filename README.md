@@ -251,18 +251,24 @@ Deux workflows dans `.github/workflows/` (Java 17 ou 21 selon le job, cache pub 
 
 | Workflow | Déclencheur | Contenu |
 |---|---|---|
-| `ci.yml` | push sur toute branche + PR | `flutter analyze` → (`flutter test --coverage` ‖ `firestore rules (emulator)`, en parallèle après `analyze`) → (`build web` ‖ `build apk --debug`, en parallèle après `test`). Artefacts : `coverage-lcov`, `greenaccess-debug-apk` (7 jours). |
+| `ci.yml` | push sur toute branche + PR | `flutter analyze` → (`flutter test --coverage` ‖ `backend tests (functions + firestore rules)`, en parallèle après `analyze`) → (`build web` ‖ `build apk --debug`, en parallèle après `test`). Artefacts : `coverage-lcov`, `greenaccess-debug-apk` (7 jours). |
 | `build-apk.yml` | manuel (`workflow_dispatch`) ou push sur `feat/design-system-overhaul` | `flutter build apk --release --split-per-abi`. Artefact `greenaccess-apk` (arm64-v8a, armeabi-v7a, x86_64 séparés — l'arm64 tient sous 30 Mo pour une distribution directe). |
 
-Le job `integration` (`ci.yml`) démarre l'émulateur Firestore (`firebase emulators:exec
---only firestore`, Java 21 requis) et y exécute `firestore-tests/` (Node.js,
-`@firebase/rules-unit-testing`, 22 tests) : isolation des documents `users/{uid}`,
-interdiction de s'auto-promouvoir `role: admin` (à la création comme à la mise à jour),
-cloisonnement par propriétaire de `scores_climat`, `demandes_financement` (+ sous-collection
-`remboursements`), `contrats_assurance`, `sinistres` et `paiements`, droits d'écriture
-`partenaireFinanceur`/`partenaireAssureur`, lecture ouverte / écriture admin-only pour
-`produits_assurance`, `zones_alea`, `partenaires` et les notifications globales. C'est un
-test des **Security Rules**, pas de l'app Flutter — voir §7 pour pourquoi ce choix.
+Le job `integration` (`ci.yml`) exécute deux suites indépendantes :
+1. `npm --prefix functions test` — tests unitaires purs de `calculerScoreClimat`
+   (`functions/test/`, `node --test` + `tsx`, sans émulateur) : formule pondérée exacte,
+   bornes 0-100, arrondi.
+2. `firebase emulators:exec --only firestore` (Java 21 requis) exécute `firestore-tests/`
+   (Node.js, `@firebase/rules-unit-testing`, 22 tests) : isolation des documents
+   `users/{uid}`, interdiction de s'auto-promouvoir `role: admin` (à la création comme à la
+   mise à jour), cloisonnement par propriétaire de `scores_climat`, `demandes_financement`
+   (+ sous-collection `remboursements`), `contrats_assurance`, `sinistres` et `paiements`,
+   droits d'écriture `partenaireFinanceur`/`partenaireAssureur`, lecture ouverte / écriture
+   admin-only pour `produits_assurance`, `zones_alea`, `partenaires` et les notifications
+   globales.
+
+Ce sont des tests du **backend** (formule de scoring + Security Rules), pas de l'app
+Flutter — voir §7 pour pourquoi ce choix.
 
 Les deux régénèrent `android/app/google-services.json` à la volée depuis les clés déjà
 versionnées dans `lib/firebase_options.dart` (§5) — aucun secret de repo à configurer.
@@ -293,6 +299,33 @@ Tests présents (`test/`) :
   utilisé par les tests de ViewModels (repositories injectés avec `fake_cloud_firestore`)
 
 Exécutés automatiquement par `ci.yml` à chaque push.
+
+**Cloud Functions — formule de scoring** (`functions/test/`, Node.js) :
+
+```bash
+cd functions && npm test
+# ou, depuis la racine :
+npm --prefix functions test
+```
+
+Tests unitaires purs (`node --test` + `tsx`, aucun émulateur requis) de
+`calculerScoreClimat` (`functions/src/index.ts`) :
+- `calculerScore` applique exactement les poids du CDC (0.25/0.20/0.20/0.20/0.15 + bonus
+  additif), vérifié critère par critère et en combinaison.
+- `co2ToScore` respecte les 6 paliers (0/20/40/60/80/100).
+- Bornes 0-100 garanties même avec une entrée hors plage : écrire ce test a révélé que
+  `calculerScore`/`resilienceToScore`/`certifToScore` ne plafonnaient que le *maximum*
+  (`Math.min(100, …)`) sans jamais borner le *minimum* — une `resilience` négative (non
+  revalidée côté client) pouvait produire un score total négatif. Corrigé avec
+  `Math.max(0, …)` sur les trois fonctions.
+- Arrondi à 1 décimale vérifié sur un cas réel tombant pile sur `.x5` (JS arrondit `.5` vers
+  le haut).
+
+`functions/test/testEnv.ts` initialise `firebase-functions-test` en mode offline (infra
+prête pour de futurs tests de triggers Firestore — `onCourseCompleted`,
+`onDemandeSubmitted`… — pas encore écrits) et fixe `GCLOUD_PROJECT` avant que
+`src/index.ts` ne s'importe, car ce fichier appelle `admin.initializeApp()` à son
+chargement.
 
 **Firestore Security Rules** (`firestore-tests/`, Node.js) :
 
@@ -401,6 +434,9 @@ seulement en local) :
 - Tests des Firestore Security Rules (`firestore-tests/`, 22 tests) contre l'émulateur, en CI
   (isolation utilisateur, anti-élévation de rôle, droits partenaireFinanceur/partenaireAssureur,
   cloisonnement Assurance/paiements/remboursements, accès admin-only) — voir §6ter
+- Tests unitaires purs de la formule `calculerScoreClimat` (`functions/test/`, 11 tests, sans
+  émulateur), en CI — poids CDC exacts, bornes 0-100, arrondi ; a révélé et corrigé un bug
+  réel de borne basse manquante (score négatif possible avec une entrée hors plage)
 - Tests d'intégration Flutter écrits (`integration_test/`) pour AuthRepository,
   ScoreRepository, FinancementRepository et CoursRepository contre les émulateurs — leur
   écriture a révélé et corrigé 7 bugs réels de correspondance de schéma/config (client ↔
