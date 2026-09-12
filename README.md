@@ -561,6 +561,16 @@ seulement en local) :
 
 ## 8. État d'avancement
 
+> **Phase 2 — Socle de tests (plan d'implémentation CDC, tâches J2.1 à J2.27) : terminée.**
+> Bilan : Security Rules Firestore (22 tests), Cloud Functions (28 tests), 4 suites
+> d'intégration Flutter écrites (bloquées en exécution, voir §7), 87 tests unitaires de
+> ViewModels, 6 widget tests, résumé de couverture lcov publié en CI (26 % mesurés, cible CDC
+> §7.1 : 45-55 %, voir §6ter). 3 bugs réels corrigés côté frontend (aucun nouvel écran/
+> fonctionnalité — cette phase visait la fiabilité, pas de nouveauté visible) : débordement de
+> mise en page sur l'écran de connexion, validation jamais déclenchée sur le stepper de demande
+> de financement, préremplissage de champ invisible à l'écran (détail §7). Prochaine étape :
+> tâches de la phase suivante du plan d'implémentation (non encore communiquées).
+
 **Fait**
 
 - Architecture MVVM + Riverpod + go_router en place, 5 modules métier câblés bout en bout
