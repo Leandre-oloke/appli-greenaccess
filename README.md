@@ -517,6 +517,21 @@ Tests présents (`test/`) :
   `tester.ensureVisible()` avant le tap, plutôt que l'agrandissement de viewport utilisé pour
   le `SliverList` de `dashboard_screen_test.dart` (les deux pièges sont liés à la
   virtualisation/au défilement mais se corrigent différemment selon le type de scroll).
+- `widgets/carte_alea_screen_test.dart` (J4.4-J4.6) — carte OpenStreetMap (`flutter_map`),
+  marqueur + légende par type d'aléa, bouton de géolocalisation (accordée/refusée). Sans accès
+  réseau réel aux tuiles (le mock HTTP de `flutter_test` renvoie 400 à toute requête — attendu,
+  documenté en tête de fichier, ne fait pas échouer les tests puisque `TileLayer` absorbe les
+  échecs de tuile sans lever). Deux pièges de test réels : (1) `find.byIcon(...)` est ambigu
+  ici car la légende réutilise les mêmes icônes que les marqueurs, et `flutter_map` peut
+  dessiner plusieurs copies d'un même marqueur (répétition horizontale de la carte à faible
+  zoom) — corrigé en identifiant chaque marqueur par le message unique de son `Tooltip`
+  (`"Ville — Type"`) plutôt que par icône ; (2) assertions GPS passées de `findsOneWidget` à
+  `findsWidgets` pour la même raison de duplication. `GeolocatorPlatform.instance` substitué
+  par un fake (`geolocator_platform_interface` ajouté en `dev_dependencies`) plutôt que
+  d'appeler le vrai canal de plateforme, indisponible en test. A révélé un vrai bug de
+  production : la tuile d'action « Carte des aléas » sur `AssuranceScreen` pointait vers
+  `AppRoutes.fichesProduit` (probablement un espace réservé le temps que l'écran carte
+  existe) — corrigée pour pointer vers la nouvelle route `AppRoutes.carteAlea`.
 - `widget_test.dart` — smoke test du design system (`AppTheme` clair/sombre + composants `Ga*`
   se rendent sans exception). Ne boote **pas** `GreenAccessApp` en entier : dès son premier
   `build()`, l'app touche trois plugins Firebase réels (Auth, Firestore, Messaging) dont le
@@ -705,16 +720,20 @@ seulement en local) :
 > comportement actuel (vérifie l'export et la suppression du compte lui-même) sans masquer
 > cette limite ni prétendre qu'elle est résolue.
 
-> **Phase 4 — Carte des aléas climatiques (démarrée) : moteur de cartographie + données prêts,
-> écran de carte pas encore construit.** `flutter_map`/`latlong2` sont déclarés dans
-> `pubspec.yaml` depuis le J1 (Fondations), non importés (tree-shakés, aucun impact sur la
-> taille du build tant qu'aucun écran ne les utilise). `ZoneAleaModel.fromJson()` +
-> `AssuranceRepository.getZonesAlea()` savent désormais lire `assets/data/zones_alea.json` — un
-> jeu de 16 zones réelles couvrant les 8 pays déjà gérés par l'app (Sénégal : Dakar, Thiès,
-> Saint-Louis, Kaolack, Matam ; Bénin : Cotonou, Parakou ; Côte d'Ivoire, Mali, Burkina Faso,
-> Niger, Togo, Guinée), utilisé en repli quand `zones_alea` est vide côté Firestore (même
-> convention que les cours de démo de `CoursRepository`). Prochaine étape : l'écran de carte
-> lui-même (module Assurance), qui importera enfin `flutter_map`.
+> **Phase 4 — Carte des aléas climatiques : moteur de cartographie, données et écran tous en
+> place.** `flutter_map`/`latlong2` (déclarés depuis le J1) sont désormais réellement importés
+> par `CarteAleaScreen` (`lib/views/assurance/carte_alea_screen.dart`, route
+> `/assurance/carte`) : fond OpenStreetMap, un marqueur + un cercle de risque par zone (icône
+> selon le type d'aléa — sécheresse/inondation/chaleur —, couleur selon le niveau de risque —
+> faible/moyen/élevé), légende toujours visible, position GPS optionnelle de l'utilisateur
+> (`geolocator`, permission demandée à la demande via le bouton de localisation, jamais au
+> chargement de l'écran). `ZoneAleaModel.fromJson()` + `AssuranceRepository.getZonesAlea()`
+> lisent `assets/data/zones_alea.json` — 16 zones réelles couvrant les 8 pays déjà gérés par
+> l'app (Sénégal : Dakar, Thiès, Saint-Louis, Kaolack, Matam ; Bénin : Cotonou, Parakou ; Côte
+> d'Ivoire, Mali, Burkina Faso, Niger, Togo, Guinée), utilisées en repli quand `zones_alea` est
+> vide côté Firestore (même convention que les cours de démo de `CoursRepository`). A révélé un
+> vrai bug de production, corrigé au passage : la tuile « Carte des aléas » sur
+> `AssuranceScreen` pointait vers le mauvais écran (`fichesProduit`) — détail §7.
 
 **Fait**
 
@@ -784,9 +803,6 @@ seulement en local) :
   émulateur Android/iOS) — voir le diagnostic détaillé en §7
 - Couverture de tests à étendre : widgets, parcours E2E
 - Intégration réelle des API Mobile Money (actuellement flux applicatif)
-- Écran de carte des aléas climatiques (Module Assurance) — `flutter_map`/`latlong2` déclarés,
-  données prêtes (`ZoneAleaModel`, `AssuranceRepository.getZonesAlea()`,
-  `assets/data/zones_alea.json`), seul l'écran affichant la carte reste à construire (§8)
 - `AuthRepository.deleteAccount()` laisse des données orphelines (`scores_climat`,
   `demandes_financement`, `paiements`, `contrats_assurance`, `sinistres`) — trouvé en marge de
   J3.4, écart potentiel avec le droit à l'effacement RGPD (art. 17), détail §8

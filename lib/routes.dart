@@ -6,6 +6,7 @@ import 'models/user_model.dart';
 import 'ui/motion/ga_page_transitions.dart';
 import 'viewmodels/auth_viewmodel.dart';
 import 'views/assurance/assurance_screen.dart';
+import 'views/assurance/carte_alea_screen.dart';
 import 'views/assurance/fiches_produit_screen.dart';
 import 'views/assurance/mes_contrats_screen.dart';
 import 'views/assurance/simulateur_assurance_screen.dart';
@@ -68,6 +69,7 @@ class AppRoutes {
   static const simulateurAssurance = '/assurance/simulateur';
   static const souscription        = '/assurance/souscrire';
   static const mesContrats         = '/assurance/contrats';
+  static const carteAlea           = '/assurance/carte';
   static String sinistreForm(String contratId) => '/assurance/sinistre/$contratId';
   static const notifications       = '/dashboard/notifications';
 
@@ -274,6 +276,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                 GoRoute(path: 'simulateur', pageBuilder: (_, s) => _fadePage(s, const SimulateurAssuranceScreen())),
                 GoRoute(path: 'souscrire',  pageBuilder: (_, s) => _fadePage(s, const SouscriptionScreen())),
                 GoRoute(path: 'contrats',   pageBuilder: (_, s) => _fadePage(s, const MesContratsScreen())),
+                GoRoute(path: 'carte',      pageBuilder: (_, s) => _fadePage(s, const CarteAleaScreen())),
                 GoRoute(
                   path: 'sinistre/:contratId',
                   pageBuilder: (_, s) => _fadePage(

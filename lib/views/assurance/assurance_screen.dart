@@ -114,7 +114,7 @@ class _QuickActionsGrid extends StatelessWidget {
           icon: Icons.map_outlined,
           label: 'Carte des aléas',
           color: AppColors.error,
-          onTap: () => context.push(AppRoutes.fichesProduit),
+          onTap: () => context.push(AppRoutes.carteAlea),
         ),
         _ActionTile(
           icon: Icons.grid_view_outlined,

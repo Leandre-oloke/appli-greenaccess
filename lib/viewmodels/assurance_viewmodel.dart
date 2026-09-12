@@ -170,6 +170,19 @@ class AssuranceViewModel extends StateNotifier<AssuranceState> {
     }
   }
 
+  /// Zones à risque seules, sans filtrer les produits par zone — utilisé par
+  /// `CarteAleaScreen` (Phase 4), à la différence de `loadProduitsParZone`
+  /// qui charge les deux ensemble pour `AssuranceScreen`/`FichesProduitScreen`.
+  Future<void> loadZonesAlea() async {
+    state = state.copyWith(isLoading: true);
+    try {
+      final zonesAlea = await _repository.getZonesAlea();
+      state = state.copyWith(zonesAlea: zonesAlea, isLoading: false);
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: e.toString());
+    }
+  }
+
   Future<void> loadContrats() async {
     state = state.copyWith(isLoading: true);
     try {
