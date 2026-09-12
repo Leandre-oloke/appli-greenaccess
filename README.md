@@ -59,7 +59,8 @@ lib/
 │   ├── partenaire_model.dart
 │   ├── assurance_model.dart         (ProduitAssuranceModel, ContratAssuranceModel, SimulationAssuranceResult, ZoneAleaModel, StatutContrat, SinistreModel)
 │   ├── notification_model.dart      (NotificationModel, NotificationType)
-│   └── user_data_export_model.dart  (UserDataExportModel — agrégat pour l'export RGPD, J3.4)
+│   ├── user_data_export_model.dart  (UserDataExportModel — agrégat pour l'export RGPD, J3.4)
+│   └── audit_log_model.dart         (AuditLogModel — journal d'audit inviolable, J3.7)
 │
 ├── repositories/    # accès données Firestore / Storage / Cloud Functions
 │   ├── auth_repository.dart
@@ -71,6 +72,7 @@ lib/
 │   ├── assurance_repository.dart
 │   ├── notification_repository.dart
 │   ├── export_repository.dart       (J3.4 — collecte cross-collections pour l'export RGPD)
+│   ├── audit_repository.dart        (J3.7-J3.8 — logAction(), branché sur 4 actions critiques)
 │   └── admin_repository.dart
 │
 ├── viewmodels/      # logique de présentation (StateNotifier / Notifier Riverpod)
@@ -310,13 +312,15 @@ Le job `integration` (`ci.yml`) exécute trois suites :
    sécheresse/inondation/chaleur + appel Open-Meteo mocké,
    `functions/test/checkAlertesClimatiques.test.ts`).
 3. `firebase emulators:exec --only firestore` (Java 21 requis) exécute `firestore-tests/`
-   (Node.js, `@firebase/rules-unit-testing`, 22 tests) : isolation des documents
+   (Node.js, `@firebase/rules-unit-testing`, 27 tests) : isolation des documents
    `users/{uid}`, interdiction de s'auto-promouvoir `role: admin` (à la création comme à la
    mise à jour), cloisonnement par propriétaire de `scores_climat`, `demandes_financement`
    (+ sous-collection `remboursements`), `contrats_assurance`, `sinistres` et `paiements`,
    droits d'écriture `partenaireFinanceur`/`partenaireAssureur`, lecture ouverte / écriture
    admin-only pour `produits_assurance`, `zones_alea`, `partenaires` et les notifications
-   globales.
+   globales, et le journal d'audit `audit_logs` (J3.7) : création réservée à sa propre action
+   (`userId == request.auth.uid`), champs requis validés, lecture réservée aux admins,
+   modification/suppression **toujours refusées, même pour un admin** (ajout seul).
 
 Les suites 2 et 3 tournent sous le **même** démarrage d'émulateur Firestore (une seule
 commande `firebase emulators:exec`, deux `npm` enchaînés) pour éviter de le lancer deux fois.
@@ -356,6 +360,22 @@ Tests présents (`test/`) :
   paiements, contrats d'assurance, sinistres), et surtout vérifie l'absence de fuite entre
   comptes (données d'un autre utilisateur semées en décoy, jamais présentes dans l'export).
   Lève une exception explicite si le profil est introuvable.
+- `repositories/audit_repository_test.dart` (J3.7-J3.8) — `AuditRepository.logAction()`/
+  `fetchLogs()` (écriture des champs attendus, tri du plus récent au plus ancien), puis
+  vérifie le branchement réel sur les 4 actions critiques listées par le CDC §6 :
+  `FinancementRepository.submit()`, `AssuranceRepository.soumettreDossier()`,
+  `PaiementRepository.initierPaiement()` et `AuthRepository.deleteAccount()` alimentent
+  chacune le journal d'audit avec la bonne action et le bon `userId`. Pour `deleteAccount()`,
+  vérifie aussi que le log est bien écrit *avant* la suppression du document utilisateur (la
+  règle Firestore exige `request.auth.uid`, invalide une fois le compte supprimé).
+- `integration/rgpd_export_deletion_scenario_test.dart` (J3.9) — parcours complet portabilité
+  → effacement sur un même utilisateur : export avant suppression (données présentes), puis
+  `AuthRepository.deleteAccount()`, puis vérifie que le profil a disparu, qu'un nouvel export
+  échoue explicitement (plutôt qu'un export vide silencieux), et que le journal d'audit garde
+  la trace de la suppression. Comme les 4 fichiers `integration_test/` (voir plus bas), ce
+  n'est pas un test Flutter contre de vrais émulateurs (bloqué dans ce Codespace) : le
+  scénario T11 est validé avec les vrais repositories enchaînés dans l'ordre du parcours
+  utilisateur, contre un `FakeFirebaseFirestore` partagé.
 - `utils/export_formatters_test.dart` (J3.5) — fonctions pures (`buildExportCsv`,
   `buildExportPdf`), testées sans Firestore à partir d'un `UserDataExportModel` fixe : contenu
   attendu par section, CSV valide même sans aucune donnée (en-têtes seuls), PDF non vide avec
@@ -481,6 +501,15 @@ Tests présents (`test/`) :
   bouton "Nouvelle demande" masqué, action "Simuler" désactivée sans effet au tap) et score ≥ 60
   (message "Éligible au financement", bouton présent) ; cas `currentScore == null` traité comme
   0/100 (toujours verrouillé) ; état vide "Aucune demande". Aucun bug de production trouvé.
+- `widgets/profil_screen_test.dart` (J3.6) — rend la portabilité des données accessible depuis
+  l'écran Profil : présence du bouton « Télécharger mes données », ouverture du choix de
+  format (PDF/CSV) au tap, appel de `exportAsCsv()`/`exportAsPdf()` avec le bon `userId` selon
+  le choix. A révélé un piège de test (pas un bug de production) : le bouton est en bas d'un
+  long formulaire défilant (`SingleChildScrollView`) — hors du viewport par défaut du test, un
+  `tap()` direct rate silencieusement (offset hors zone visible). Corrigé avec
+  `tester.ensureVisible()` avant le tap, plutôt que l'agrandissement de viewport utilisé pour
+  le `SliverList` de `dashboard_screen_test.dart` (les deux pièges sont liés à la
+  virtualisation/au défilement mais se corrigent différemment selon le type de scroll).
 - `widget_test.dart` — smoke test du design system (`AppTheme` clair/sombre + composants `Ga*`
   se rendent sans exception). Ne boote **pas** `GreenAccessApp` en entier : dès son premier
   `build()`, l'app touche trois plugins Firebase réels (Auth, Firestore, Messaging) dont le
@@ -641,23 +670,33 @@ seulement en local) :
 > de financement, préremplissage de champ invisible à l'écran (détail §7). Prochaine étape :
 > tâches de la phase suivante du plan d'implémentation (non encore communiquées).
 
-> **Phase 3 — Sécurité & conformité RGPD (en cours) : J3.1-J3.5 codées et testées.**
+> **Phase 3 — Sécurité & conformité RGPD (en cours) : J3.1-J3.9 codées et testées.**
 > J3.1-J3.3 (connexion Google) : `AuthRepository.signInWithGoogle()`,
 > `AuthViewModel.signInWithGoogle()` et le bouton « Continuer avec Google » sur `LoginScreen`
 > sont en place. **Non fonctionnelle en pratique tant que J3.1 (action manuelle en console
 > Firebase) n'est pas faite par le titulaire du projet** — détail en §5 « Connexion Google ».
-> J3.4-J3.5 (export RGPD, droit à la portabilité) : `ExportRepository.exportUserData()` réunit
+> J3.4-J3.6 (export RGPD, droit à la portabilité) : `ExportRepository.exportUserData()` réunit
 > les données personnelles à travers 9 collections/sous-collections, `export_formatters.dart`
-> les convertit en PDF et CSV, bouton « Exporter mes données » sur `ProfilScreen` — celle-ci,
+> les convertit en PDF et CSV, bouton « Télécharger mes données » sur `ProfilScreen` — celle-ci,
 > contrairement à Google Sign-In, est **fonctionnelle dès maintenant**, aucune action manuelle
-> requise. Le tout couvert par les tests existants (§7), analyse statique propre.
+> requise. J3.7-J3.8 (journal d'audit) : collection `audit_logs` en ajout seul et inviolable
+> (règle Firestore : `update`/`delete` toujours refusés, même pour un admin), alimentée par
+> `AuditRepository.logAction()` sur les 4 actions critiques du CDC §6 — soumission de demande
+> (`FinancementRepository.submit()`), souscription (`AssuranceRepository.soumettreDossier()`),
+> paiement (`PaiementRepository.initierPaiement()`), suppression de compte
+> (`AuthRepository.deleteAccount()`, log écrit avant la suppression effective). J3.9 : scénario
+> de bout en bout portabilité → effacement validé (détail §7, pourquoi ce n'est pas un
+> `integration_test/` classique). Le tout couvert par les tests existants (§7), analyse
+> statique propre.
 >
-> **Trouvé en marge (pas corrigé, hors périmètre J3.4-J3.5)** : `AuthRepository.deleteAccount()`
+> **Trouvé en marge (pas corrigé, hors périmètre J3.4-J3.9)** : `AuthRepository.deleteAccount()`
 > ne supprime que `users/{uid}` et ses sous-collections `progress`/`badges` — les documents
 > `scores_climat`, `demandes_financement` (+ `remboursements`), `paiements`,
 > `contrats_assurance` et `sinistres` de l'utilisateur restent orphelins en Firestore après
 > suppression du compte. Écart potentiel avec le droit à l'effacement (RGPD art. 17) — à
-> traiter dans une tâche dédiée du plan d'implémentation, pas ici.
+> traiter dans une tâche dédiée du plan d'implémentation, pas ici. Le test J3.9 documente ce
+> comportement actuel (vérifie l'export et la suppression du compte lui-même) sans masquer
+> cette limite ni prétendre qu'elle est résolue.
 
 **Fait**
 
@@ -679,18 +718,24 @@ seulement en local) :
 - **CI/CD GitHub Actions** : pipeline `analyze → test → build web / apk debug` sur chaque push
   + workflow de build APK release à la demande (§6ter)
 - Chaîne Android mise à niveau pour Flutter 3.47 (Gradle/AGP/Kotlin)
-- Tests unitaires de ViewModels (87, dont Auth/Financement/Partenaire/NotificationViewModel) +
-  6 widget tests (LoginScreen, ScoringFormScreen, ScoreResultScreen, DemandeFormScreen,
-  DashboardScreen, FinancementScreen — validation, navigation par étapes, verrou de financement
-  CDC §4.1, états d'erreur/chargement) + smoke test du design system, exécutés en CI ; ont
-  révélé et corrigé 3 bugs réels (débordement de layout, validation jamais déclenchée sur un
-  stepper 7 étapes, pré-remplissage de champ invisible à l'écran)
+- Tests unitaires de ViewModels (91, dont Auth — email et Google —,
+  Financement/Partenaire/NotificationViewModel) + 7 widget tests (LoginScreen,
+  ScoringFormScreen, ScoreResultScreen, DemandeFormScreen, DashboardScreen, FinancementScreen,
+  ProfilScreen — validation, navigation par étapes, verrou de financement CDC §4.1, connexion
+  Google, export RGPD, états d'erreur/chargement) + tests de repositories/fonctions utilitaires
+  purs (`ExportRepository`, `AuditRepository`, `export_formatters.dart` — nouvelle catégorie de
+  tests depuis J3.4, ciblant directement le code métier sans passer par un ViewModel) + 1
+  scénario d'intégration RGPD (export + suppression de compte, J3.9) + smoke test du design
+  system, exécutés en CI ; ont révélé et corrigé 3 bugs réels (débordement de layout,
+  validation jamais déclenchée sur un stepper 7 étapes, pré-remplissage de champ invisible à
+  l'écran)
 - Couverture de code lcov calculée et publiée en résumé de CI à chaque build (§6ter) — 26 %
   mesurés, sous la cible CDC §7.1 (45-55 %), écart noté pour prioriser les prochaines tâches
   de tests
-- Tests des Firestore Security Rules (`firestore-tests/`, 22 tests) contre l'émulateur, en CI
+- Tests des Firestore Security Rules (`firestore-tests/`, 27 tests) contre l'émulateur, en CI
   (isolation utilisateur, anti-élévation de rôle, droits partenaireFinanceur/partenaireAssureur,
-  cloisonnement Assurance/paiements/remboursements, accès admin-only) — voir §6ter
+  cloisonnement Assurance/paiements/remboursements, accès admin-only, journal d'audit
+  `audit_logs` en ajout seul et inviolable) — voir §6ter
 - Tests des Cloud Functions (`functions/test/`, 28 tests), en CI — formule `calculerScoreClimat`
   (poids CDC exacts, bornes 0-100, arrondi, contrôle d'accès), triggers `onCourseCompleted`
   (badge + idempotence), `onDemandeSubmitted` (ciblage partenaires financeurs) et

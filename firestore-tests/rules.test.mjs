@@ -242,3 +242,58 @@ test('un utilisateur ne peut pas lire les échéances de remboursement de la dem
   await assertFails(bob.doc('demandes_financement/d1/remboursements/e1').get());
   await assertSucceeds(alice.doc('demandes_financement/d1/remboursements/e1').get());
 });
+
+// ── Journal d'audit (J3.7) ─────────────────────────────────────────────────
+
+test('un utilisateur peut créer un log d’audit pour sa propre action', async () => {
+  const alice = testEnv.authenticatedContext('alice').firestore();
+  await assertSucceeds(
+    alice.collection('audit_logs').add({
+      userId: 'alice',
+      action: 'financement_soumis',
+      createdAt: new Date(),
+    }),
+  );
+});
+
+test('un utilisateur ne peut pas créer un log d’audit pour un autre userId', async () => {
+  const alice = testEnv.authenticatedContext('alice').firestore();
+  await assertFails(
+    alice.collection('audit_logs').add({
+      userId: 'bob',
+      action: 'compte_supprime',
+      createdAt: new Date(),
+    }),
+  );
+});
+
+test('un log d’audit sans les champs requis est refusé', async () => {
+  const alice = testEnv.authenticatedContext('alice').firestore();
+  await assertFails(alice.collection('audit_logs').add({ userId: 'alice' }));
+});
+
+test('un log d’audit ne peut jamais être modifié ni supprimé, même par un admin', async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await db.doc('audit_logs/log1').set({ userId: 'alice', action: 'paiement_initie', createdAt: new Date() });
+    await db.doc('users/admin1').set({ nom: 'Admin', role: 'admin' });
+  });
+  const alice = testEnv.authenticatedContext('alice').firestore();
+  const admin = testEnv.authenticatedContext('admin1').firestore();
+  await assertFails(alice.doc('audit_logs/log1').update({ action: 'modifie' }));
+  await assertFails(admin.doc('audit_logs/log1').update({ action: 'modifie' }));
+  await assertFails(alice.doc('audit_logs/log1').delete());
+  await assertFails(admin.doc('audit_logs/log1').delete());
+});
+
+test('seul un admin peut lire le journal d’audit', async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await db.doc('audit_logs/log1').set({ userId: 'alice', action: 'paiement_initie', createdAt: new Date() });
+    await db.doc('users/admin1').set({ nom: 'Admin', role: 'admin' });
+  });
+  const alice = testEnv.authenticatedContext('alice').firestore();
+  const admin = testEnv.authenticatedContext('admin1').firestore();
+  await assertFails(alice.doc('audit_logs/log1').get());
+  await assertSucceeds(admin.doc('audit_logs/log1').get());
+});

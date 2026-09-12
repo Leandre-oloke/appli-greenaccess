@@ -2,18 +2,21 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../models/assurance_model.dart';
+import 'audit_repository.dart';
 import 'cours_repository.dart';
 
 class AssuranceRepository {
   final FirebaseFirestore _firestore;
+  final AuditRepository _audit;
 
   // Lazy pour éviter FirebaseStorage.instance en test quand le repo est sous-classé.
   final FirebaseStorage? _storageOverride;
   FirebaseStorage get _storage => _storageOverride ?? FirebaseStorage.instance;
 
-  AssuranceRepository({FirebaseFirestore? firestore, FirebaseStorage? storage})
+  AssuranceRepository({FirebaseFirestore? firestore, FirebaseStorage? storage, AuditRepository? audit})
       : _firestore = firestore ?? FirebaseFirestore.instance,
-        _storageOverride = storage;
+        _storageOverride = storage,
+        _audit = audit ?? AuditRepository(firestore: firestore);
 
   Future<List<ProduitAssuranceModel>> getProduitsParZone(String zone) async {
     final snapshot = await _firestore
@@ -44,6 +47,12 @@ class AssuranceRepository {
     // Badge "Assuré Climat" à la première souscription
     await CoursRepository(firestore: _firestore)
         .triggerAssureClimatBadge(contrat.userId);
+
+    await _audit.logAction(
+      userId: contrat.userId,
+      action: 'assurance_souscrite',
+      details: {'contratId': contrat.id, 'produitId': contrat.produitId},
+    );
 
     return contrat;
   }

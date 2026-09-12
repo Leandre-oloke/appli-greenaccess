@@ -263,7 +263,7 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
               OutlinedButton.icon(
                 onPressed: () => _showExportDialog(context, user.id),
                 icon: const Icon(Icons.download_outlined),
-                label: const Text('Exporter mes données'),
+                label: const Text('Télécharger mes données'),
               ),
               const SizedBox(height: 32),
               const Divider(),

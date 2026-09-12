@@ -169,5 +169,18 @@ service cloud.firestore {
       allow read: if isAuth();
       allow write: if isAdmin();
     }
+
+    // ── Journal d'audit (J3.7) ──────────────────────────────────────────────
+    // Ajout seul et inviolable : une fois un log créé, personne (même un
+    // admin) ne peut le modifier ou le supprimer — trace des actions
+    // critiques (soumission, souscription, paiement, suppression) fiable
+    // pour un audit de conformité (CDC §6).
+    match /audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAuth()
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.keys().hasAll(['userId', 'action', 'createdAt']);
+      allow update, delete: if false;
+    }
   }
 }
