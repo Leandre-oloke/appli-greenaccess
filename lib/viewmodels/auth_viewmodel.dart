@@ -81,6 +81,47 @@ class AuthViewModel extends StateNotifier<AuthState> {
     }
   }
 
+  /// Retourne sans erreur si l'utilisateur ferme le sélecteur de compte Google
+  /// (annulation volontaire, pas un échec à signaler).
+  Future<void> signInWithGoogle() async {
+    state = state.copyWith(isLoading: true);
+    try {
+      final credential = await _repository.signInWithGoogle();
+      if (credential == null) {
+        state = state.copyWith(isLoading: false);
+        return;
+      }
+
+      var user = await _repository.getCurrentUser();
+      user ??= await _createProfileFromGoogle(credential.user!);
+      state = state.copyWith(user: user, isLoading: false, isAuthenticated: true);
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: _mapError(e));
+    }
+  }
+
+  /// Première connexion via Google : aucun profil Firestore existant, on en
+  /// crée un à partir des infos du compte Google. Champs non fournis par
+  /// Google (téléphone, pays, région, secteur) laissés vides — l'utilisateur
+  /// les complète depuis son profil (mêmes conventions que l'inscription
+  /// email : `profilComplet: false`).
+  Future<UserModel> _createProfileFromGoogle(User firebaseUser) async {
+    final profile = UserModel(
+      id: firebaseUser.uid,
+      nom: firebaseUser.displayName ?? '',
+      email: firebaseUser.email ?? '',
+      telephone: firebaseUser.phoneNumber ?? '',
+      pays: '',
+      region: '',
+      secteur: '',
+      dateInscription: DateTime.now(),
+      profilComplet: false,
+      role: UserRole.user,
+    );
+    await _repository.saveUserProfile(profile);
+    return profile;
+  }
+
   Future<void> register(String email, String password, UserModel profile) async {
     state = state.copyWith(isLoading: true);
     try {
@@ -237,6 +278,8 @@ class AuthViewModel extends StateNotifier<AuthState> {
         'weak-password'        => 'Mot de passe trop faible (6 caractères min)',
         'network-request-failed' => 'Erreur réseau. Réessayez.',
         'too-many-requests'    => 'Trop de tentatives. Réessayez plus tard.',
+        'account-exists-with-different-credential' =>
+          'Un compte existe déjà avec cet email via une autre méthode de connexion.',
         _ => 'Une erreur est survenue. Réessayez.',
       };
     }

@@ -33,15 +33,22 @@ class _FakeAuthRepository extends AuthRepository {
 }
 
 class _FakeAuthViewModel extends AuthViewModel {
-  _FakeAuthViewModel({AuthState? initialState, this.onSignIn}) : super(_FakeAuthRepository()) {
+  _FakeAuthViewModel({AuthState? initialState, this.onSignIn, this.onSignInWithGoogle})
+      : super(_FakeAuthRepository()) {
     if (initialState != null) state = initialState;
   }
 
   final void Function(String email, String password)? onSignIn;
+  final VoidCallback? onSignInWithGoogle;
 
   @override
   Future<void> signIn(String email, String password) async {
     onSignIn?.call(email, password);
+  }
+
+  @override
+  Future<void> signInWithGoogle() async {
+    onSignInWithGoogle?.call();
   }
 }
 
@@ -150,15 +157,40 @@ void main() {
     // attente" à la fin du test.
     await tester.pump(Duration.zero);
 
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    // Les deux boutons de connexion (email + Google) partagent le même état
+    // isLoading et affichent chacun leur propre spinner pendant le chargement.
+    expect(find.byType(CircularProgressIndicator), findsNWidgets(2));
     expect(find.text('Se connecter'), findsNothing);
+    expect(find.text('Continuer avec Google'), findsNothing);
 
     // Le bouton est désactivé pendant le chargement (onPressed: null).
     final button = tester.widget<FilledButton>(find.byType(FilledButton));
     expect(button.onPressed, isNull);
+    final googleButton = tester.widget<OutlinedButton>(find.byType(OutlinedButton));
+    expect(googleButton.onPressed, isNull);
 
     await tester.tap(find.byType(FilledButton), warnIfMissed: false);
     await tester.pump(Duration.zero);
     expect(signInCalled, isFalse);
+  });
+
+  testWidgets('affiche le bouton « Continuer avec Google » (J3.3)', (tester) async {
+    await tester.pumpWidget(_buildLogin((ref) => _FakeAuthViewModel()));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(OutlinedButton, 'Continuer avec Google'), findsOneWidget);
+  });
+
+  testWidgets('appelle signInWithGoogle() au tap sur « Continuer avec Google »', (tester) async {
+    var googleSignInCalled = false;
+    await tester.pumpWidget(_buildLogin(
+      (ref) => _FakeAuthViewModel(onSignInWithGoogle: () => googleSignInCalled = true),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Continuer avec Google'));
+    await tester.pumpAndSettle();
+
+    expect(googleSignInCalled, isTrue);
   });
 }

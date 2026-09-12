@@ -35,6 +35,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  Future<void> _submitGoogle() async {
+    await ref.read(authViewModelProvider.notifier).signInWithGoogle();
+    if (mounted && ref.read(authViewModelProvider).isAuthenticated) {
+      context.go(AppRoutes.dashboard);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authViewModelProvider);
@@ -147,6 +154,28 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               label: 'Se connecter',
                               loading: authState.isLoading,
                               onPressed: _submit,
+                            ),
+                            const SizedBox(height: GaSpacing.md),
+                            Row(
+                              children: [
+                                const Expanded(child: Divider()),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: GaSpacing.sm),
+                                  child: Text('ou',
+                                      style:
+                                          Theme.of(context).textTheme.bodySmall),
+                                ),
+                                const Expanded(child: Divider()),
+                              ],
+                            ),
+                            const SizedBox(height: GaSpacing.md),
+                            GaSecondaryButton.outlined(
+                              label: 'Continuer avec Google',
+                              icon: Icons.g_mobiledata_rounded,
+                              expand: true,
+                              loading: authState.isLoading,
+                              onPressed: _submitGoogle,
                             ),
                             const SizedBox(height: GaSpacing.xs),
                             GaSecondaryButton.ghost(

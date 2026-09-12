@@ -2,15 +2,29 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../models/user_model.dart';
+
+/// Web uniquement : identifiant du client OAuth Google (console Firebase →
+/// Authentication → Sign-in method → Google → "Web SDK configuration", tâche
+/// J3.1). Sur Android/iOS, ce paramètre est ignoré : GoogleSignIn utilise la
+/// configuration native (google-services.json / GoogleService-Info.plist +
+/// empreinte SHA-1/SHA-256 enregistrée dans la console Firebase).
+///   flutter run --dart-define=GOOGLE_WEB_CLIENT_ID=xxxxx.apps.googleusercontent.com
+const String _googleWebClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
 
 class AuthRepository {
   final FirebaseAuth _auth;
   final FirebaseFirestore _firestore;
+  final GoogleSignIn _googleSignIn;
 
-  AuthRepository({FirebaseAuth? auth, FirebaseFirestore? firestore})
+  AuthRepository({FirebaseAuth? auth, FirebaseFirestore? firestore, GoogleSignIn? googleSignIn})
       : _auth = auth ?? FirebaseAuth.instance,
-        _firestore = firestore ?? FirebaseFirestore.instance;
+        _firestore = firestore ?? FirebaseFirestore.instance,
+        _googleSignIn = googleSignIn ??
+            GoogleSignIn(
+              clientId: _googleWebClientId.isEmpty ? null : _googleWebClientId,
+            );
 
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
@@ -22,7 +36,25 @@ class AuthRepository {
     return _auth.createUserWithEmailAndPassword(email: email, password: password);
   }
 
-  Future<void> signOut() => _auth.signOut();
+  /// Retourne `null` si l'utilisateur ferme le sélecteur de compte Google sans
+  /// choisir de compte (annulation, pas une erreur) — sinon les identifiants
+  /// Firebase de la connexion réussie.
+  Future<UserCredential?> signInWithGoogle() async {
+    final googleUser = await _googleSignIn.signIn();
+    if (googleUser == null) return null;
+
+    final googleAuth = await googleUser.authentication;
+    final credential = GoogleAuthProvider.credential(
+      accessToken: googleAuth.accessToken,
+      idToken: googleAuth.idToken,
+    );
+    return _auth.signInWithCredential(credential);
+  }
+
+  Future<void> signOut() async {
+    await _googleSignIn.signOut();
+    await _auth.signOut();
+  }
 
   String? _verificationId;
 

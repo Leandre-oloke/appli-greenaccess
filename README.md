@@ -12,7 +12,7 @@ L'app couvre 5 modules métier, plus un back-office admin.
 
 | Module | Rôle | Écrans principaux |
 |---|---|---|
-| **Auth** | Onboarding, inscription, connexion, vérification OTP, ré-authentification forcée à chaque ouverture (app financière) | `splash`, `onboarding`, `login`, `register`, `otp` |
+| **Auth** | Onboarding, inscription, connexion (email/mot de passe + Google, voir §5), vérification OTP, ré-authentification forcée à chaque ouverture (app financière) | `splash`, `onboarding`, `login`, `register`, `otp` |
 | **Scoring climat** | Questionnaire d'évaluation du score climatique de l'utilisateur, calcul côté Cloud Function, résultat + historique | `scoring_form`, `score_result`, `historique_score` |
 | **Formation** | Catalogue de cours (vidéo / PDF / quiz / infographie), détail de cours, quiz noté, badges de progression | `course_list`, `course_detail`, `quiz`, `badges` |
 | **Financement** | Demande de micro-crédit vert, suivi du statut, échéancier de remboursement, paiement Mobile Money (Wave, Orange Money, MTN MoMo, Moov, Free), annuaire des partenaires financeurs | `financement`, `demande_form`, `statut_demande`, `remboursements`, `paiement`, `partenaires` |
@@ -177,6 +177,36 @@ score est momentanément indisponible… ») plutôt que de calculer localement.
 l'app (navigation, formulaires, autres modules) fonctionne normalement ; seul le calcul de
 score lui-même est bloqué jusqu'au déploiement de la Cloud Function.
 
+### Connexion Google (J3.1-J3.3) — action requise côté console Firebase
+
+Le code (`AuthRepository.signInWithGoogle()`, `AuthViewModel.signInWithGoogle()`, bouton
+« Continuer avec Google » sur `LoginScreen`) est en place et testé (voir §7), mais **la
+connexion Google ne fonctionnera pas tant que ces étapes manuelles n'ont pas été faites dans
+la console Firebase** (aucun contournement possible en code, comme pour le plan Blaze §5) :
+
+1. **Activer le fournisseur** : Firebase Console → `greenaccess-16d25` → Authentication →
+   Sign-in method → activer **Google** (choisir un email d'assistance).
+2. **Récupérer le Web Client ID** : une fois activé, Firebase affiche sous « Configuration du
+   SDK Web » un ID du type `xxxxx.apps.googleusercontent.com`. Le transmettre pour build via :
+   ```bash
+   flutter run --dart-define=GOOGLE_WEB_CLIENT_ID=xxxxx.apps.googleusercontent.com
+   ```
+   (voir la constante `_googleWebClientId` en tête de `lib/repositories/auth_repository.dart`).
+   Sans cette valeur, le bouton Google ne fonctionne que sur mobile (Android/iOS), pas sur le
+   web (le SDK `google_sign_in` web a besoin d'un client ID explicite).
+3. **Android uniquement** : enregistrer l'empreinte SHA-1 (et idéalement SHA-256) du
+   certificat de signature sous Project Settings → Apps → l'app Android → *Add fingerprint*.
+   Sans ça, le sélecteur de compte Google échoue silencieusement au runtime sur un appareil
+   Android réel, même avec le code correctement en place. Obtenir le SHA-1 :
+   `cd android && ./gradlew signingReport` (debug **et** release si les deux sont testés).
+   ⚠️ Les workflows CI (`ci.yml`, `build-apk.yml`) régénèrent `google-services.json` à la volée
+   à partir d'un gabarit statique (voir §6ter) — l'APK qu'ils produisent ne pourra donc pas
+   authentifier via Google tant que ce gabarit n'est pas mis à jour avec les infos OAuth
+   Android une fois l'étape 3 faite (`oauth_client` y est actuellement vide).
+
+Sans ces 3 étapes, taper sur « Continuer avec Google » affichera une erreur (ou échouera
+silencieusement sur Android) — comportement attendu, pas un bug du code.
+
 ### Environnements (dev / prod)
 
 `lib/core/env/app_env.dart` + `lib/firebase_env.dart` définissent le mécanisme de bascule :
@@ -327,6 +357,11 @@ Tests présents (`test/`) :
   pour `User`/`UserCredential` (juste des champs surchargés via le constructeur, sans stubbing) ;
   `Mock` reste approprié pour les objets dont les méthodes ne sont jamais réellement invoquées
   (ex. `FirebaseAuth`/`FirebaseFunctions` ici, juste pour satisfaire un typage de constructeur).
+  Étendu pour **J3.2** (`signInWithGoogle`) : première connexion (aucun profil Firestore →
+  création depuis `displayName`/`email` du compte Google, `profilComplet: false` comme
+  l'inscription email), connexion déjà existante (profil réutilisé sans réécriture),
+  annulation (sélecteur de compte fermé sans choix → pas d'erreur affichée, comportement
+  standard des SDK Google), erreur mappée (`account-exists-with-different-credential`).
 - `viewmodels/financement_viewmodel_test.dart` (J2.24) — simulation d'éligibilité (secteur vert
   vs. non vert, fourchette de montant ±30 %, taux indicatif, organisme « Microfinance locale »
   seulement si montant < 10 M FCFA), soumission de demande (succès/échec), chargement des
@@ -372,6 +407,11 @@ Tests présents (`test/`) :
   et les timers à durée nulle que `flutter_animate` programme pour la cascade d'entrée
   (`gaStagger`) doivent être vidés avec `pump(Duration.zero)`, pas un `pump()` nu, sous
   peine de `A Timer is still pending` en fin de test.
+  Étendu pour **J3.3** : présence du bouton « Continuer avec Google », appel de
+  `signInWithGoogle()` au tap, et mise à jour du test de chargement existant — les deux
+  boutons de connexion (email + Google) partagent le même `authState.isLoading` et affichent
+  donc chacun leur spinner (`findsNWidgets(2)`, pas `findsOneWidget` comme avant l'ajout du
+  bouton Google).
 - `widgets/scoring_form_screen_test.dart` (J2.18) — navigation des 5 étapes du stepper
   (« Suivant »/« Retour »), conservation de la sélection au retour, contenu exact du
   payload soumis à `soumettreCriteres` (clés par défaut + certifications sélectionnées),
@@ -579,6 +619,14 @@ seulement en local) :
 > de financement, préremplissage de champ invisible à l'écran (détail §7). Prochaine étape :
 > tâches de la phase suivante du plan d'implémentation (non encore communiquées).
 
+> **Phase 3 — Sécurité & conformité RGPD (en cours) : J3.1-J3.3 (connexion Google) codées et
+> testées.** `AuthRepository.signInWithGoogle()`, `AuthViewModel.signInWithGoogle()` et le
+> bouton « Continuer avec Google » sur `LoginScreen` sont en place, couverts par les tests
+> existants (§7), analyse statique propre. **Non fonctionnelle en pratique tant que J3.1
+> (action manuelle en console Firebase) n'est pas faite par le titulaire du projet** — voir
+> le détail complet (activation du fournisseur, Web Client ID, empreinte SHA-1 Android) en
+> §5 « Connexion Google ».
+
 **Fait**
 
 - Architecture MVVM + Riverpod + go_router en place, 5 modules métier câblés bout en bout
@@ -632,6 +680,9 @@ seulement en local) :
 - Activer le plan Blaze sur `greenaccess-16d25` puis `firebase deploy` (functions/rules/index)
   — bloquant, aucun contournement (§5) ; développement des functions en attendant via les
   émulateurs Firebase
+- Activer le fournisseur Google dans Firebase Authentication + enregistrer le Web Client ID
+  et l'empreinte SHA-1 Android (J3.1) — bloquant pour que la connexion Google (J3.2-J3.3,
+  code déjà en place) fonctionne réellement ; détail §5 « Connexion Google »
 - Créer un projet Firebase de dev distinct et y brancher `firebase_env.dart`
 - Retirer le calcul de score de secours côté client (`ScoreRepository`), non conforme au CDC
 - Débloquer l'exécution de `integration_test/` (Chrome non-headless + DevTools, ou

@@ -23,9 +23,15 @@ class _MockFirebaseAuth extends Mock implements FirebaseAuth {}
 // stubé via when() sans génération de code (@GenerateMocks), faute de
 // valeur "dummy" pour String.
 class _FakeUser extends Fake implements User {
-  _FakeUser(this.uid);
+  _FakeUser(this.uid, {this.displayName, this.email});
   @override
   final String uid;
+  @override
+  final String? displayName;
+  @override
+  final String? email;
+  @override
+  String? get phoneNumber => null; // Google Sign-In n'expose pas ce champ ici
 }
 
 class _FakeUserCredential extends Fake implements UserCredential {
@@ -35,6 +41,13 @@ class _FakeUserCredential extends Fake implements UserCredential {
 }
 
 UserCredential _credentialFor(String uid) => _FakeUserCredential(_FakeUser(uid));
+
+UserCredential _googleCredentialFor(
+  String uid, {
+  String? displayName,
+  String? email,
+}) =>
+    _FakeUserCredential(_FakeUser(uid, displayName: displayName, email: email));
 
 // ── Fake AuthRepository ──────────────────────────────────────────────────────
 
@@ -60,6 +73,8 @@ class _FakeAuthRepository extends AuthRepository {
   Object? changePasswordError;
   Object? deleteAccountError;
   bool deleteAccountCalled = false;
+  UserCredential? googleCredentialToReturn;
+  Object? googleSignInError;
 
   @override
   Future<UserCredential> signInWithEmail(String email, String password) async {
@@ -75,6 +90,12 @@ class _FakeAuthRepository extends AuthRepository {
       throw err;
     }
     return credentialToReturn!;
+  }
+
+  @override
+  Future<UserCredential?> signInWithGoogle() async {
+    if (googleSignInError != null) throw googleSignInError!;
+    return googleCredentialToReturn; // null = utilisateur a fermé le sélecteur
   }
 
   @override
@@ -189,6 +210,78 @@ void main() {
         expect(state.isAuthenticated, isFalse);
         expect(state.isLoading, isFalse);
       }
+    });
+  });
+
+  group('AuthViewModel — signInWithGoogle', () {
+    test('première connexion (aucun profil Firestore) : crée le profil depuis le compte Google',
+        () async {
+      final repo = _FakeAuthRepository()
+        ..googleCredentialToReturn = _googleCredentialFor(
+          'uid-google',
+          displayName: 'Alice Dupont',
+          email: 'alice@gmail.com',
+        );
+      // getCurrentUser() renvoie null : pas encore de profil Firestore pour cet uid.
+      final container = _makeContainer(repo);
+      addTearDown(container.dispose);
+
+      await container.read(authViewModelProvider.notifier).signInWithGoogle();
+      final state = container.read(authViewModelProvider);
+
+      expect(state.isAuthenticated, isTrue);
+      expect(state.user?.id, 'uid-google');
+      expect(state.user?.nom, 'Alice Dupont');
+      expect(state.user?.email, 'alice@gmail.com');
+      expect(state.user?.role, UserRole.user);
+      expect(state.user?.profilComplet, isFalse);
+      expect(repo.savedProfile?.id, 'uid-google');
+    });
+
+    test('connexion existante (profil Firestore déjà présent) : réutilise le profil sans le réécrire',
+        () async {
+      final repo = _FakeAuthRepository()
+        ..googleCredentialToReturn = _googleCredentialFor('uid-existing')
+        ..currentUserQueue.add(_user(id: 'uid-existing'));
+      final container = _makeContainer(repo);
+      addTearDown(container.dispose);
+
+      await container.read(authViewModelProvider.notifier).signInWithGoogle();
+      final state = container.read(authViewModelProvider);
+
+      expect(state.isAuthenticated, isTrue);
+      expect(state.user?.id, 'uid-existing');
+      expect(repo.savedProfile, isNull); // profil existant : pas de ré-écriture
+    });
+
+    test('annulation (sélecteur de compte fermé sans choix) : pas d\'erreur, reste non authentifié',
+        () async {
+      final repo = _FakeAuthRepository(); // googleCredentialToReturn reste null
+      final container = _makeContainer(repo);
+      addTearDown(container.dispose);
+
+      await container.read(authViewModelProvider.notifier).signInWithGoogle();
+      final state = container.read(authViewModelProvider);
+
+      expect(state.isAuthenticated, isFalse);
+      expect(state.error, isNull);
+      expect(state.isLoading, isFalse);
+    });
+
+    test('erreur (ex. compte existant via un autre moyen de connexion) : message affichable',
+        () async {
+      final repo = _FakeAuthRepository()
+        ..googleSignInError =
+            FirebaseAuthException(code: 'account-exists-with-different-credential');
+      final container = _makeContainer(repo);
+      addTearDown(container.dispose);
+
+      await container.read(authViewModelProvider.notifier).signInWithGoogle();
+      final state = container.read(authViewModelProvider);
+
+      expect(state.isAuthenticated, isFalse);
+      expect(state.error,
+          'Un compte existe déjà avec cet email via une autre méthode de connexion.');
     });
   });
 
