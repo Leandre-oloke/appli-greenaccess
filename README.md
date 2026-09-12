@@ -298,6 +298,26 @@ Tests présents (`test/`) :
 
 - `viewmodels/admin_viewmodel_test.dart`
 - `viewmodels/assurance_viewmodel_test.dart`
+- `viewmodels/auth_viewmodel_test.dart` (J2.23) — connexion (succès, détection + nettoyage de
+  compte orphelin, table de correspondance des 7 codes `FirebaseAuthException`→message),
+  inscription (succès, `email-already-in-use` avec compte actif réel vs. avec orphelin
+  confirmé), déconnexion, mise à jour de profil, changement de mot de passe, suppression de
+  compte. A établi le bon usage de mockito dans ce dépôt : un `Mock` nu (`class X extends Mock
+  implements Y {}`) échoue avec `when(...).thenReturn(...)` sur un getter non-nullable sans
+  génération de code (`@GenerateMocks`) — ça lève une erreur de type qui corrompt ensuite l'état
+  interne de mockito pour tous les `when()` suivants dans le même run ("Bad state: Cannot call
+  `when` within a stub response"). Corrigé en remplaçant `Mock` par la classe `Fake` de mockito
+  pour `User`/`UserCredential` (juste des champs surchargés via le constructeur, sans stubbing) ;
+  `Mock` reste approprié pour les objets dont les méthodes ne sont jamais réellement invoquées
+  (ex. `FirebaseAuth`/`FirebaseFunctions` ici, juste pour satisfaire un typage de constructeur).
+- `viewmodels/financement_viewmodel_test.dart` (J2.24) — simulation d'éligibilité (secteur vert
+  vs. non vert, fourchette de montant ±30 %, taux indicatif, organisme « Microfinance locale »
+  seulement si montant < 10 M FCFA), soumission de demande (succès/échec), chargement des
+  demandes (succès/échec réseau), délégations pures (`getStatut`, `getRemboursements`,
+  `genererEcheancier`). Aucun bug de production trouvé ; un comportement réel est documenté
+  (pas corrigé, hors périmètre de cette tâche) : `_calculerEligibilite` compare le secteur en
+  minuscules à une liste de mots-clés sans accents, donc `'ÉNERGIE'.toLowerCase()` (`'énergie'`)
+  n'est jamais reconnu comme secteur vert à cause de l'accent.
 - `viewmodels/formation_viewmodel_test.dart`
 - `viewmodels/scoring_viewmodel_test.dart`
 - `widgets/login_screen_test.dart` (J2.17) — validation de formulaire (email invalide, mot
@@ -346,6 +366,24 @@ Tests présents (`test/`) :
      sa toute première construction, pas sur un rebuild ultérieur avec un `initialValue`
      différent. Corrigé avec `key: ValueKey('nom-$nom')` (et pareil pour la région) sur ces
      deux champs, pour forcer Flutter à recréer le champ quand la valeur préremplie change.
+- `widgets/dashboard_screen_test.dart` (J2.21) — états vide (aucun score) et chargé (jauge +
+  niveau + XP de formation) du point d'entrée après connexion, badge de notifications non
+  lues, avertissement d'expiration de contrat d'assurance, résilience face à un état `error`
+  (le dashboard n'affiche aucun bandeau d'erreur dédié — vérifié en lisant le code plutôt que
+  supposé). Trois pièges à noter pour de futurs tests sur cet écran : (1) `DateFormat(...,
+  'fr')` exige `initializeDateFormatting('fr', null)` dans `setUpAll` (fait normalement une
+  seule fois par `main.dart` au démarrage réel, jamais exécuté dans un test isolé) ; (2)
+  `initState()` déclenche `loadCourses()`/`loadLatestScore()` au montage, qui écrasent tout
+  état de formation/score injecté à la main — il faut semer directement le
+  `FakeFirebaseFirestore` sous-jacent avec les documents attendus plutôt que d'injecter l'état ;
+  (3) le corps est un `SliverList` : au viewport par défaut du test (~600 px), le contenu en bas
+  n'est jamais construit (virtualisation) — élargir le viewport (`tester.view.physicalSize`)
+  avant de chercher ce contenu.
+- `widgets/financement_screen_test.dart` (J2.22) — verrou d'accès au financement selon le score
+  Climat (seuil 60/100, CDC §4.1) dans les deux sens : score < 60 (message "Score insuffisant",
+  bouton "Nouvelle demande" masqué, action "Simuler" désactivée sans effet au tap) et score ≥ 60
+  (message "Éligible au financement", bouton présent) ; cas `currentScore == null` traité comme
+  0/100 (toujours verrouillé) ; état vide "Aucune demande". Aucun bug de production trouvé.
 - `widget_test.dart` — smoke test du design system (`AppTheme` clair/sombre + composants `Ga*`
   se rendent sans exception). Ne boote **pas** `GreenAccessApp` en entier : dès son premier
   `build()`, l'app touche trois plugins Firebase réels (Auth, Firestore, Messaging) dont le
@@ -516,11 +554,12 @@ seulement en local) :
 - **CI/CD GitHub Actions** : pipeline `analyze → test → build web / apk debug` sur chaque push
   + workflow de build APK release à la demande (§6ter)
 - Chaîne Android mise à niveau pour Flutter 3.47 (Gradle/AGP/Kotlin)
-- Tests unitaires de ViewModels (46) + 4 widget tests (LoginScreen, ScoringFormScreen,
-  ScoreResultScreen, DemandeFormScreen — validation, navigation par étapes, états
-  d'erreur/chargement) + smoke test du design system, exécutés en CI ; ont révélé et
-  corrigé 3 bugs réels (débordement de layout, validation jamais déclenchée sur un
-  stepper 7 étapes, pré-remplissage de champ invisible à l'écran)
+- Tests unitaires de ViewModels (69, dont AuthViewModel et FinancementViewModel) + 6 widget
+  tests (LoginScreen, ScoringFormScreen, ScoreResultScreen, DemandeFormScreen, DashboardScreen,
+  FinancementScreen — validation, navigation par étapes, verrou de financement CDC §4.1, états
+  d'erreur/chargement) + smoke test du design system, exécutés en CI ; ont révélé et corrigé 3
+  bugs réels (débordement de layout, validation jamais déclenchée sur un stepper 7 étapes,
+  pré-remplissage de champ invisible à l'écran)
 - Tests des Firestore Security Rules (`firestore-tests/`, 22 tests) contre l'émulateur, en CI
   (isolation utilisateur, anti-élévation de rôle, droits partenaireFinanceur/partenaireAssureur,
   cloisonnement Assurance/paiements/remboursements, accès admin-only) — voir §6ter
