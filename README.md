@@ -286,6 +286,15 @@ versionnées dans `lib/firebase_options.dart` (§5) — aucun secret de repo à 
 Lancer `build-apk.yml` manuellement : `gh workflow run "Build APK" --ref <branche>`, puis
 `gh run download <id> -n greenaccess-apk`.
 
+**Couverture (J2.27)** : le job `test` calcule le pourcentage de couverture (lignes
+couvertes/testées, `LH:`/`LF:` de `coverage/lcov.info`) et le publie dans l'onglet *Summary*
+du run à chaque build (pas seulement dans l'artefact `coverage-lcov` téléchargeable) — calcul
+fait à la main via `awk`, sans action tierce (Codecov ou autre) ni compte/token externe à
+configurer. Mesure actuelle : **26 %** (1946/7486 lignes), sous la cible du CDC §7.1 (45-55 %) —
+écart noté ici comme référence pour prioriser les prochaines tâches de tests (Phase 2 et
+au-delà), pas corrigé dans cette tâche (0,5 h, hors périmètre d'écrire des dizaines de tests
+supplémentaires).
+
 ---
 
 ## 7. Tests
@@ -319,6 +328,24 @@ Tests présents (`test/`) :
   minuscules à une liste de mots-clés sans accents, donc `'ÉNERGIE'.toLowerCase()` (`'énergie'`)
   n'est jamais reconnu comme secteur vert à cause de l'accent.
 - `viewmodels/formation_viewmodel_test.dart`
+- `viewmodels/notification_viewmodel_test.dart` (J2.26) — fusion des flux broadcast (admin →
+  tous) et personnel (contrat → un utilisateur) triée par date décroissante et limitée à 50,
+  décompte de notifications non lues (`unreadCount`), persistance de `lastReadAt` dans
+  `SharedPreferences` entre deux instances du ViewModel (simulant un redémarrage de l'app),
+  suppression (y compris l'absorption silencieuse d'une exception du repository, par
+  construction du code : `try { } catch (_) {}`). `NotificationViewModel` a un effet de bord
+  réel dans son constructeur (`_init()` s'abonne à deux streams Firestore) : utilise donc le
+  vrai `NotificationRepository` backé par un `FakeFirebaseFirestore` semé au préalable, comme
+  `widgets/dashboard_screen_test.dart`, plutôt qu'un fake à retours contrôlés. A révélé un
+  piège de test (pas un bug de production) : `ProviderContainer.overrides` est paresseux — le
+  `StateNotifierProvider` (et donc l'abonnement Firestore fait par le constructeur du
+  ViewModel) n'est construit qu'au premier `container.read(...)`, donc un test qui sème
+  Firestore puis attend un délai sans avoir jamais lu le provider ne voit jamais les données
+  arriver. Corrigé en forçant un `read` immédiatement après la création du conteneur.
+- `viewmodels/partenaire_viewmodel_test.dart` (J2.25) — chargement de l'annuaire (succès/échec),
+  création/modification/suppression/activation-désactivation d'un partenaire, y compris la
+  conservation de la liste locale inchangée quand le repository lève une exception. Aucun bug
+  de production trouvé.
 - `viewmodels/scoring_viewmodel_test.dart`
 - `widgets/login_screen_test.dart` (J2.17) — validation de formulaire (email invalide, mot
   de passe < 6 caractères, aucun appel à `signIn` tant que le formulaire n'est pas valide),
@@ -554,12 +581,15 @@ seulement en local) :
 - **CI/CD GitHub Actions** : pipeline `analyze → test → build web / apk debug` sur chaque push
   + workflow de build APK release à la demande (§6ter)
 - Chaîne Android mise à niveau pour Flutter 3.47 (Gradle/AGP/Kotlin)
-- Tests unitaires de ViewModels (69, dont AuthViewModel et FinancementViewModel) + 6 widget
-  tests (LoginScreen, ScoringFormScreen, ScoreResultScreen, DemandeFormScreen, DashboardScreen,
-  FinancementScreen — validation, navigation par étapes, verrou de financement CDC §4.1, états
-  d'erreur/chargement) + smoke test du design system, exécutés en CI ; ont révélé et corrigé 3
-  bugs réels (débordement de layout, validation jamais déclenchée sur un stepper 7 étapes,
-  pré-remplissage de champ invisible à l'écran)
+- Tests unitaires de ViewModels (87, dont Auth/Financement/Partenaire/NotificationViewModel) +
+  6 widget tests (LoginScreen, ScoringFormScreen, ScoreResultScreen, DemandeFormScreen,
+  DashboardScreen, FinancementScreen — validation, navigation par étapes, verrou de financement
+  CDC §4.1, états d'erreur/chargement) + smoke test du design system, exécutés en CI ; ont
+  révélé et corrigé 3 bugs réels (débordement de layout, validation jamais déclenchée sur un
+  stepper 7 étapes, pré-remplissage de champ invisible à l'écran)
+- Couverture de code lcov calculée et publiée en résumé de CI à chaque build (§6ter) — 26 %
+  mesurés, sous la cible CDC §7.1 (45-55 %), écart noté pour prioriser les prochaines tâches
+  de tests
 - Tests des Firestore Security Rules (`firestore-tests/`, 22 tests) contre l'émulateur, en CI
   (isolation utilisateur, anti-élévation de rôle, droits partenaireFinanceur/partenaireAssureur,
   cloisonnement Assurance/paiements/remboursements, accès admin-only) — voir §6ter

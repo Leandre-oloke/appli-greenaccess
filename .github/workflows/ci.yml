@@ -72,6 +72,29 @@ jobs:
       - run: flutter pub get
       - run: flutter test --coverage
 
+      # J2.27 — résumé de couverture visible dans l'onglet Summary de chaque
+      # run (pas seulement dans l'artefact lcov téléchargeable) : total lignes
+      # couvertes/testées, comparé à la cible CDC §7.1 (45-55 %). Calculé à la
+      # main (awk sur les lignes LH:/LF: de lcov.info) plutôt que via une
+      # action tierce (Codecov, etc.) — aucun compte/token externe à configurer.
+      - name: Résumé de couverture (lcov)
+        if: always()
+        run: |
+          if [ -f coverage/lcov.info ]; then
+            read -r LH LF <<< "$(awk -F: '/^LH:/{lh+=$2} /^LF:/{lf+=$2} END{print lh, lf}' coverage/lcov.info)"
+            PCT=$(awk -v lh="$LH" -v lf="$LF" 'BEGIN { if (lf == 0) print "0.00"; else printf "%.2f", (lh / lf) * 100 }')
+            {
+              echo "### Couverture de code (lcov)"
+              echo ""
+              echo "| Lignes couvertes | Lignes totales | Couverture | Cible CDC §7.1 |"
+              echo "|---|---|---|---|"
+              echo "| $LH | $LF | **${PCT} %** | 45-55 % |"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "Couverture lcov : ${PCT} % (${LH}/${LF} lignes)"
+          else
+            echo "Aucun fichier coverage/lcov.info généré (flutter test --coverage a-t-il échoué ?)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - uses: actions/upload-artifact@v4
         with:
           name: coverage-lcov
