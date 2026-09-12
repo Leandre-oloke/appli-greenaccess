@@ -4,6 +4,7 @@ import 'package:geolocator/geolocator.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/user_model.dart';
 import '../../viewmodels/auth_viewmodel.dart';
+import '../../viewmodels/export_viewmodel.dart';
 
 class ProfilScreen extends ConsumerStatefulWidget {
   const ProfilScreen({super.key});
@@ -258,6 +259,12 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
                   side: const BorderSide(color: AppColors.error),
                 ),
               ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () => _showExportDialog(context, user.id),
+                icon: const Icon(Icons.download_outlined),
+                label: const Text('Exporter mes données'),
+              ),
               const SizedBox(height: 32),
               const Divider(),
               const SizedBox(height: 8),
@@ -456,6 +463,78 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
         ),
       );
     }
+  }
+
+  /// Export RGPD (J3.4-J3.5) : laisse le choix du format, PDF (lisible) ou
+  /// CSV (réutilisable), plutôt que de déclencher les deux téléchargements
+  /// d'un coup — meilleure expérience qu'une double boîte de dialogue de
+  /// partage/impression s'ouvrant simultanément.
+  Future<void> _showExportDialog(BuildContext context, String userId) async {
+    bool isLoading = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Exporter mes données'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Réunit toutes vos données personnelles (profil, scores, formations, '
+                'demandes de financement, paiements, contrats d\'assurance…) dans un '
+                'seul fichier.',
+                style: TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              if (isLoading) ...[
+                const Center(child: CircularProgressIndicator()),
+                const SizedBox(height: 8),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isLoading ? null : () => Navigator.pop(ctx),
+              child: const Text('Annuler'),
+            ),
+            TextButton(
+              onPressed: isLoading
+                  ? null
+                  : () async {
+                      setDialogState(() => isLoading = true);
+                      await ref.read(exportViewModelProvider.notifier).exportAsCsv(userId);
+                      final error = ref.read(exportViewModelProvider).error;
+                      if (!ctx.mounted) return;
+                      Navigator.pop(ctx);
+                      if (error != null) _showExportError(context, error);
+                    },
+              child: const Text('CSV'),
+            ),
+            FilledButton(
+              onPressed: isLoading
+                  ? null
+                  : () async {
+                      setDialogState(() => isLoading = true);
+                      await ref.read(exportViewModelProvider.notifier).exportAsPdf(userId);
+                      final error = ref.read(exportViewModelProvider).error;
+                      if (!ctx.mounted) return;
+                      Navigator.pop(ctx);
+                      if (error != null) _showExportError(context, error);
+                    },
+              child: const Text('PDF'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showExportError(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: AppColors.error),
+    );
   }
 
   Future<bool?> _confirmLogoutDialog(BuildContext context) {

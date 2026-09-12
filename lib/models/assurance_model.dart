@@ -85,6 +85,44 @@ class ContratAssuranceModel {
   }
 }
 
+class SinistreModel {
+  final String id;
+  final String userId;
+  final String contratId;
+  final String typeSinistre;
+  final String description;
+  final DateTime dateSinistre;
+  final List<String> photoUrls;
+  final String statut;
+  final DateTime? createdAt;
+
+  const SinistreModel({
+    required this.id,
+    required this.userId,
+    required this.contratId,
+    required this.typeSinistre,
+    required this.description,
+    required this.dateSinistre,
+    this.photoUrls = const [],
+    required this.statut,
+    this.createdAt,
+  });
+
+  factory SinistreModel.fromFirestore(Map<String, dynamic> data, String id) {
+    return SinistreModel(
+      id: id,
+      userId: data['userId'] ?? '',
+      contratId: data['contratId'] ?? '',
+      typeSinistre: data['typeSinistre'] ?? '',
+      description: data['description'] ?? '',
+      dateSinistre: (data['dateSinistre'] as dynamic).toDate(),
+      photoUrls: List<String>.from(data['photoUrls'] ?? []),
+      statut: data['statut'] ?? 'en_attente',
+      createdAt: data['createdAt'] != null ? (data['createdAt'] as dynamic).toDate() : null,
+    );
+  }
+}
+
 class SimulationAssuranceResult {
   final ProduitAssuranceModel produitRecommande;
   final double primeEstimee;

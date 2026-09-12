@@ -134,4 +134,16 @@ class AssuranceRepository {
 
     return doc.id;
   }
+
+  /// Sinistres déclarés par un utilisateur (toutes zones/contrats confondus)
+  /// — utilisé par l'export RGPD (J3.4), pas encore exposé ailleurs dans l'app.
+  Future<List<SinistreModel>> getSinistres(String userId) async {
+    final snapshot = await _firestore
+        .collection('sinistres')
+        .where('userId', isEqualTo: userId)
+        .get();
+    return snapshot.docs
+        .map((doc) => SinistreModel.fromFirestore(doc.data(), doc.id))
+        .toList();
+  }
 }

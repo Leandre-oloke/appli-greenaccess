@@ -56,6 +56,11 @@ dependencies:
   printing: ^5.13.1
   connectivity_plus: ^6.0.0
 
+  # Export RGPD (J3.4-J3.5, CDC §5 · T11)
+  csv: ^6.0.0             # sérialisation CSV (échappement virgules/guillemets/accents)
+  share_plus: ^10.1.4      # partage/téléchargement cross-plateforme du fichier CSV
+                           # (le PDF réutilise Printing.sharePdf, déjà en place)
+
   cupertino_icons: ^1.0.8
 
 dev_dependencies:

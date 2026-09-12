@@ -57,8 +57,9 @@ lib/
 │   ├── remboursement_model.dart
 │   ├── paiement_model.dart          (PaiementModel, OperateurMobileMoney, StatutPaiement)
 │   ├── partenaire_model.dart
-│   ├── assurance_model.dart         (ProduitAssuranceModel, ContratAssuranceModel, SimulationAssuranceResult, ZoneAleaModel, StatutContrat)
-│   └── notification_model.dart      (NotificationModel, NotificationType)
+│   ├── assurance_model.dart         (ProduitAssuranceModel, ContratAssuranceModel, SimulationAssuranceResult, ZoneAleaModel, StatutContrat, SinistreModel)
+│   ├── notification_model.dart      (NotificationModel, NotificationType)
+│   └── user_data_export_model.dart  (UserDataExportModel — agrégat pour l'export RGPD, J3.4)
 │
 ├── repositories/    # accès données Firestore / Storage / Cloud Functions
 │   ├── auth_repository.dart
@@ -69,6 +70,7 @@ lib/
 │   ├── partenaire_repository.dart
 │   ├── assurance_repository.dart
 │   ├── notification_repository.dart
+│   ├── export_repository.dart       (J3.4 — collecte cross-collections pour l'export RGPD)
 │   └── admin_repository.dart
 │
 ├── viewmodels/      # logique de présentation (StateNotifier / Notifier Riverpod)
@@ -79,7 +81,11 @@ lib/
 │   ├── partenaire_viewmodel.dart
 │   ├── assurance_viewmodel.dart
 │   ├── notification_viewmodel.dart
+│   ├── export_viewmodel.dart        (J3.4-J3.5 — orchestre collecte + génération + partage)
 │   └── admin_viewmodel.dart
+│
+├── utils/           # fonctions pures, sans accès Firestore
+│   └── export_formatters.dart       (J3.5 — génère les fichiers PDF et CSV de l'export RGPD)
 │
 └── views/           # UI par module (auth, scoring, formation, financement, assurance,
                      #   notifications, dashboard, profil, shell, admin)
@@ -343,6 +349,22 @@ flutter test
 
 Tests présents (`test/`) :
 
+- `repositories/export_repository_test.dart` (J3.4) — première suite de tests ciblant
+  directement un repository (`fake_cloud_firestore`, sans passer par un ViewModel) : réunit
+  les données d'un utilisateur à travers toutes les collections concernées (profil, scores,
+  progression/badges/notifications personnelles, demandes + échéances de remboursement,
+  paiements, contrats d'assurance, sinistres), et surtout vérifie l'absence de fuite entre
+  comptes (données d'un autre utilisateur semées en décoy, jamais présentes dans l'export).
+  Lève une exception explicite si le profil est introuvable.
+- `utils/export_formatters_test.dart` (J3.5) — fonctions pures (`buildExportCsv`,
+  `buildExportPdf`), testées sans Firestore à partir d'un `UserDataExportModel` fixe : contenu
+  attendu par section, CSV valide même sans aucune donnée (en-têtes seuls), PDF non vide avec
+  l'en-tête standard `%PDF-`. A révélé un avertissement (pas une erreur) : les fontes de base
+  du package `pdf` (Helvetica, sans fonte embarquée — voir §7 ci-dessous) impriment "has no
+  Unicode support" sur du texte français accentué ; comportement déjà présent (mais jamais
+  remarqué, faute de test) dans les 3 autres exports PDF de l'app (`score_result_screen.dart`,
+  `statut_demande_screen.dart`, `admin_demandes_screen.dart`) — documenté ici, pas corrigé
+  (nécessiterait d'embarquer une fonte TTF, un chantier plus large que J3.4-J3.5).
 - `viewmodels/admin_viewmodel_test.dart`
 - `viewmodels/assurance_viewmodel_test.dart`
 - `viewmodels/auth_viewmodel_test.dart` (J2.23) — connexion (succès, détection + nettoyage de
@@ -619,13 +641,23 @@ seulement en local) :
 > de financement, préremplissage de champ invisible à l'écran (détail §7). Prochaine étape :
 > tâches de la phase suivante du plan d'implémentation (non encore communiquées).
 
-> **Phase 3 — Sécurité & conformité RGPD (en cours) : J3.1-J3.3 (connexion Google) codées et
-> testées.** `AuthRepository.signInWithGoogle()`, `AuthViewModel.signInWithGoogle()` et le
-> bouton « Continuer avec Google » sur `LoginScreen` sont en place, couverts par les tests
-> existants (§7), analyse statique propre. **Non fonctionnelle en pratique tant que J3.1
-> (action manuelle en console Firebase) n'est pas faite par le titulaire du projet** — voir
-> le détail complet (activation du fournisseur, Web Client ID, empreinte SHA-1 Android) en
-> §5 « Connexion Google ».
+> **Phase 3 — Sécurité & conformité RGPD (en cours) : J3.1-J3.5 codées et testées.**
+> J3.1-J3.3 (connexion Google) : `AuthRepository.signInWithGoogle()`,
+> `AuthViewModel.signInWithGoogle()` et le bouton « Continuer avec Google » sur `LoginScreen`
+> sont en place. **Non fonctionnelle en pratique tant que J3.1 (action manuelle en console
+> Firebase) n'est pas faite par le titulaire du projet** — détail en §5 « Connexion Google ».
+> J3.4-J3.5 (export RGPD, droit à la portabilité) : `ExportRepository.exportUserData()` réunit
+> les données personnelles à travers 9 collections/sous-collections, `export_formatters.dart`
+> les convertit en PDF et CSV, bouton « Exporter mes données » sur `ProfilScreen` — celle-ci,
+> contrairement à Google Sign-In, est **fonctionnelle dès maintenant**, aucune action manuelle
+> requise. Le tout couvert par les tests existants (§7), analyse statique propre.
+>
+> **Trouvé en marge (pas corrigé, hors périmètre J3.4-J3.5)** : `AuthRepository.deleteAccount()`
+> ne supprime que `users/{uid}` et ses sous-collections `progress`/`badges` — les documents
+> `scores_climat`, `demandes_financement` (+ `remboursements`), `paiements`,
+> `contrats_assurance` et `sinistres` de l'utilisateur restent orphelins en Firestore après
+> suppression du compte. Écart potentiel avec le droit à l'effacement (RGPD art. 17) — à
+> traiter dans une tâche dédiée du plan d'implémentation, pas ici.
 
 **Fait**
 
@@ -690,6 +722,9 @@ seulement en local) :
 - Couverture de tests à étendre : widgets, parcours E2E
 - Intégration réelle des API Mobile Money (actuellement flux applicatif)
 - Carte des aléas climatiques (Module Assurance, `flutter_map` déjà déclaré)
+- `AuthRepository.deleteAccount()` laisse des données orphelines (`scores_climat`,
+  `demandes_financement`, `paiements`, `contrats_assurance`, `sinistres`) — trouvé en marge de
+  J3.4, écart potentiel avec le droit à l'effacement RGPD (art. 17), détail §8
 
 > Suivi détaillé tâche par tâche : plan d'implémentation (classeur xlsx partagé séparément,
 > non versionné dans ce dépôt).
