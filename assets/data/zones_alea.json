@@ -1,0 +1,146 @@
+[
+  {
+    "id": "sn-dakar",
+    "nom": "Dakar",
+    "type_alea": "inondation",
+    "latitude": 14.6928,
+    "longitude": -17.4467,
+    "rayon": 25,
+    "niveau_risque": "moyen"
+  },
+  {
+    "id": "sn-thies",
+    "nom": "Thiès",
+    "type_alea": "secheresse",
+    "latitude": 14.7910,
+    "longitude": -16.9359,
+    "rayon": 30,
+    "niveau_risque": "moyen"
+  },
+  {
+    "id": "sn-saint-louis",
+    "nom": "Saint-Louis",
+    "type_alea": "inondation",
+    "latitude": 16.0179,
+    "longitude": -16.4896,
+    "rayon": 20,
+    "niveau_risque": "eleve"
+  },
+  {
+    "id": "sn-kaolack",
+    "nom": "Kaolack",
+    "type_alea": "secheresse",
+    "latitude": 14.1652,
+    "longitude": -16.0726,
+    "rayon": 35,
+    "niveau_risque": "eleve"
+  },
+  {
+    "id": "sn-matam",
+    "nom": "Matam",
+    "type_alea": "secheresse",
+    "latitude": 15.6559,
+    "longitude": -13.2548,
+    "rayon": 40,
+    "niveau_risque": "eleve"
+  },
+  {
+    "id": "bj-cotonou",
+    "nom": "Cotonou",
+    "type_alea": "inondation",
+    "latitude": 6.3703,
+    "longitude": 2.3912,
+    "rayon": 20,
+    "niveau_risque": "eleve"
+  },
+  {
+    "id": "bj-parakou",
+    "nom": "Parakou",
+    "type_alea": "chaleur",
+    "latitude": 9.3372,
+    "longitude": 2.6303,
+    "rayon": 30,
+    "niveau_risque": "moyen"
+  },
+  {
+    "id": "ci-abidjan",
+    "nom": "Abidjan",
+    "type_alea": "inondation",
+    "latitude": 5.3600,
+    "longitude": -4.0083,
+    "rayon": 25,
+    "niveau_risque": "moyen"
+  },
+  {
+    "id": "ci-korhogo",
+    "nom": "Korhogo",
+    "type_alea": "secheresse",
+    "latitude": 9.4580,
+    "longitude": -5.6296,
+    "rayon": 30,
+    "niveau_risque": "moyen"
+  },
+  {
+    "id": "ml-bamako",
+    "nom": "Bamako",
+    "type_alea": "chaleur",
+    "latitude": 12.6392,
+    "longitude": -8.0029,
+    "rayon": 30,
+    "niveau_risque": "eleve"
+  },
+  {
+    "id": "ml-mopti",
+    "nom": "Mopti",
+    "type_alea": "secheresse",
+    "latitude": 14.4843,
+    "longitude": -4.1965,
+    "rayon": 35,
+    "niveau_risque": "eleve"
+  },
+  {
+    "id": "bf-ouagadougou",
+    "nom": "Ouagadougou",
+    "type_alea": "chaleur",
+    "latitude": 12.3714,
+    "longitude": -1.5197,
+    "rayon": 30,
+    "niveau_risque": "moyen"
+  },
+  {
+    "id": "bf-dori",
+    "nom": "Dori",
+    "type_alea": "secheresse",
+    "latitude": 14.0354,
+    "longitude": -0.0347,
+    "rayon": 40,
+    "niveau_risque": "eleve"
+  },
+  {
+    "id": "ne-niamey",
+    "nom": "Niamey",
+    "type_alea": "chaleur",
+    "latitude": 13.5127,
+    "longitude": 2.1128,
+    "rayon": 35,
+    "niveau_risque": "eleve"
+  },
+  {
+    "id": "tg-lome",
+    "nom": "Lomé",
+    "type_alea": "inondation",
+    "latitude": 6.1725,
+    "longitude": 1.2314,
+    "rayon": 20,
+    "niveau_risque": "moyen"
+  },
+  {
+    "id": "gn-conakry",
+    "nom": "Conakry",
+    "type_alea": "inondation",
+    "latitude": 9.6412,
+    "longitude": -13.5784,
+    "rayon": 25,
+    "niveau_risque": "moyen"
+  }
+]

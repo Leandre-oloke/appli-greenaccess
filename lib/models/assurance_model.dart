@@ -167,4 +167,11 @@ class ZoneAleaModel {
       niveauRisque: data['niveau_risque'] ?? 'faible',
     );
   }
+
+  /// Jeu de données bundlé (`assets/data/zones_alea.json`, Phase 4) — même
+  /// forme de champs que Firestore, avec un `id` inclus dans chaque entrée
+  /// plutôt que déduit d'un id de document.
+  factory ZoneAleaModel.fromJson(Map<String, dynamic> json) {
+    return ZoneAleaModel.fromFirestore(json, json['id'] ?? '');
+  }
 }

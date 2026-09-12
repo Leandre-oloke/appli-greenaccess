@@ -360,6 +360,13 @@ Tests présents (`test/`) :
   paiements, contrats d'assurance, sinistres), et surtout vérifie l'absence de fuite entre
   comptes (données d'un autre utilisateur semées en décoy, jamais présentes dans l'export).
   Lève une exception explicite si le profil est introuvable.
+- `repositories/assurance_repository_test.dart` (Phase 4, carte des aléas climatiques) —
+  `getZonesAlea()` se replie sur `assets/data/zones_alea.json` quand Firestore est vide (même
+  convention que `CoursRepository.fetchAll()` pour les cours de démo), mais utilise bien
+  Firestore quand des zones y sont déjà présentes. Vérifie explicitement la présence des
+  villes UEMOA demandées (Dakar, Thiès, Saint-Louis, Cotonou, Parakou) et l'absence de valeur
+  par défaut silencieuse sur chaque champ (`typeAlea`/`niveauRisque` dans l'énumération
+  attendue, coordonnées non nulles, rayon positif).
 - `repositories/audit_repository_test.dart` (J3.7-J3.8) — `AuditRepository.logAction()`/
   `fetchLogs()` (écriture des champs attendus, tri du plus récent au plus ancien), puis
   vérifie le branchement réel sur les 4 actions critiques listées par le CDC §6 :
@@ -698,6 +705,17 @@ seulement en local) :
 > comportement actuel (vérifie l'export et la suppression du compte lui-même) sans masquer
 > cette limite ni prétendre qu'elle est résolue.
 
+> **Phase 4 — Carte des aléas climatiques (démarrée) : moteur de cartographie + données prêts,
+> écran de carte pas encore construit.** `flutter_map`/`latlong2` sont déclarés dans
+> `pubspec.yaml` depuis le J1 (Fondations), non importés (tree-shakés, aucun impact sur la
+> taille du build tant qu'aucun écran ne les utilise). `ZoneAleaModel.fromJson()` +
+> `AssuranceRepository.getZonesAlea()` savent désormais lire `assets/data/zones_alea.json` — un
+> jeu de 16 zones réelles couvrant les 8 pays déjà gérés par l'app (Sénégal : Dakar, Thiès,
+> Saint-Louis, Kaolack, Matam ; Bénin : Cotonou, Parakou ; Côte d'Ivoire, Mali, Burkina Faso,
+> Niger, Togo, Guinée), utilisé en repli quand `zones_alea` est vide côté Firestore (même
+> convention que les cours de démo de `CoursRepository`). Prochaine étape : l'écran de carte
+> lui-même (module Assurance), qui importera enfin `flutter_map`.
+
 **Fait**
 
 - Architecture MVVM + Riverpod + go_router en place, 5 modules métier câblés bout en bout
@@ -766,7 +784,9 @@ seulement en local) :
   émulateur Android/iOS) — voir le diagnostic détaillé en §7
 - Couverture de tests à étendre : widgets, parcours E2E
 - Intégration réelle des API Mobile Money (actuellement flux applicatif)
-- Carte des aléas climatiques (Module Assurance, `flutter_map` déjà déclaré)
+- Écran de carte des aléas climatiques (Module Assurance) — `flutter_map`/`latlong2` déclarés,
+  données prêtes (`ZoneAleaModel`, `AssuranceRepository.getZonesAlea()`,
+  `assets/data/zones_alea.json`), seul l'écran affichant la carte reste à construire (§8)
 - `AuthRepository.deleteAccount()` laisse des données orphelines (`scores_climat`,
   `demandes_financement`, `paiements`, `contrats_assurance`, `sinistres`) — trouvé en marge de
   J3.4, écart potentiel avec le droit à l'effacement RGPD (art. 17), détail §8
