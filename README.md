@@ -161,13 +161,21 @@ que l'usage ne dépasse pas ces quotas.
 
 Activer : https://console.firebase.google.com/project/greenaccess-16d25/usage/details → *Modifier le plan* → *Blaze*.
 
-**En attendant**, deux façons de ne pas être bloqué :
-- **Émulateurs Firebase** (`firebase emulators:start`, voir §6bis) : développer et tester les
-  Cloud Functions en local, **sans Blaze ni carte bancaire**.
-- `ScoreRepository` a un **repli de calcul local** si `calculerScoreClimat` est injoignable
-  (fonction non déployée) — l'app reste utilisable de bout en bout sans déploiement. Ce repli
-  est temporaire : le CDC interdit tout calcul de score côté client, il sera retiré une fois
-  Blaze actif et les functions déployées (voir §8).
+**En attendant**, une seule façon de développer/tester sans être bloqué : les **émulateurs
+Firebase** (`firebase emulators:start`, voir §6bis) — Cloud Functions en local, **sans Blaze
+ni carte bancaire**.
+
+⚠️ **Conséquence concrète tant que Blaze n'est pas activé et `calculerScoreClimat` pas
+déployée : le calcul de score est indisponible dans l'app installée (APK, `flutter run` sans
+émulateur).** `ScoreRepository` a bien un repli de calcul local (mêmes poids que la Cloud
+Function), mais il est **désactivé par défaut** depuis la mise en conformité CDC §4.4
+(commit `28d92275`, « le calcul n'est jamais effectué côté client ») — il ne s'active qu'en
+passant explicitement `--dart-define=ALLOW_LOCAL_SCORE_FALLBACK=true` à la compilation (dev
+uniquement, jamais utilisé dans les builds CI/APK release de ce dépôt). Par défaut, un appel à
+`calculerScoreClimat` injoignable lève une exception affichée à l'utilisateur (« Le calcul du
+score est momentanément indisponible… ») plutôt que de calculer localement. Tout le reste de
+l'app (navigation, formulaires, autres modules) fonctionne normalement ; seul le calcul de
+score lui-même est bloqué jusqu'au déploiement de la Cloud Function.
 
 ### Environnements (dev / prod)
 
