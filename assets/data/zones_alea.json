@@ -2,6 +2,7 @@
   {
     "id": "sn-dakar",
     "nom": "Dakar",
+    "pays": "Sénégal",
     "type_alea": "inondation",
     "latitude": 14.6928,
     "longitude": -17.4467,
@@ -11,6 +12,7 @@
   {
     "id": "sn-thies",
     "nom": "Thiès",
+    "pays": "Sénégal",
     "type_alea": "secheresse",
     "latitude": 14.7910,
     "longitude": -16.9359,
@@ -20,6 +22,7 @@
   {
     "id": "sn-saint-louis",
     "nom": "Saint-Louis",
+    "pays": "Sénégal",
     "type_alea": "inondation",
     "latitude": 16.0179,
     "longitude": -16.4896,
@@ -29,6 +32,7 @@
   {
     "id": "sn-kaolack",
     "nom": "Kaolack",
+    "pays": "Sénégal",
     "type_alea": "secheresse",
     "latitude": 14.1652,
     "longitude": -16.0726,
@@ -38,6 +42,7 @@
   {
     "id": "sn-matam",
     "nom": "Matam",
+    "pays": "Sénégal",
     "type_alea": "secheresse",
     "latitude": 15.6559,
     "longitude": -13.2548,
@@ -47,6 +52,7 @@
   {
     "id": "bj-cotonou",
     "nom": "Cotonou",
+    "pays": "Bénin",
     "type_alea": "inondation",
     "latitude": 6.3703,
     "longitude": 2.3912,
@@ -56,6 +62,7 @@
   {
     "id": "bj-parakou",
     "nom": "Parakou",
+    "pays": "Bénin",
     "type_alea": "chaleur",
     "latitude": 9.3372,
     "longitude": 2.6303,
@@ -65,6 +72,7 @@
   {
     "id": "ci-abidjan",
     "nom": "Abidjan",
+    "pays": "Côte d'Ivoire",
     "type_alea": "inondation",
     "latitude": 5.3600,
     "longitude": -4.0083,
@@ -74,6 +82,7 @@
   {
     "id": "ci-korhogo",
     "nom": "Korhogo",
+    "pays": "Côte d'Ivoire",
     "type_alea": "secheresse",
     "latitude": 9.4580,
     "longitude": -5.6296,
@@ -83,6 +92,7 @@
   {
     "id": "ml-bamako",
     "nom": "Bamako",
+    "pays": "Mali",
     "type_alea": "chaleur",
     "latitude": 12.6392,
     "longitude": -8.0029,
@@ -92,6 +102,7 @@
   {
     "id": "ml-mopti",
     "nom": "Mopti",
+    "pays": "Mali",
     "type_alea": "secheresse",
     "latitude": 14.4843,
     "longitude": -4.1965,
@@ -101,6 +112,7 @@
   {
     "id": "bf-ouagadougou",
     "nom": "Ouagadougou",
+    "pays": "Burkina Faso",
     "type_alea": "chaleur",
     "latitude": 12.3714,
     "longitude": -1.5197,
@@ -110,6 +122,7 @@
   {
     "id": "bf-dori",
     "nom": "Dori",
+    "pays": "Burkina Faso",
     "type_alea": "secheresse",
     "latitude": 14.0354,
     "longitude": -0.0347,
@@ -119,6 +132,7 @@
   {
     "id": "ne-niamey",
     "nom": "Niamey",
+    "pays": "Niger",
     "type_alea": "chaleur",
     "latitude": 13.5127,
     "longitude": 2.1128,
@@ -128,6 +142,7 @@
   {
     "id": "tg-lome",
     "nom": "Lomé",
+    "pays": "Togo",
     "type_alea": "inondation",
     "latitude": 6.1725,
     "longitude": 1.2314,
@@ -137,6 +152,7 @@
   {
     "id": "gn-conakry",
     "nom": "Conakry",
+    "pays": "Guinée",
     "type_alea": "inondation",
     "latitude": 9.6412,
     "longitude": -13.5784,

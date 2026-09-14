@@ -129,17 +129,24 @@ class SimulationAssuranceResult {
   final double indemnisationEstimee;
   final String raisonRecommandation;
 
+  /// Réduction appliquée grâce au Score Climat (J4.11-J4.12, CDC §4.1), en
+  /// pourcentage entier (0 si aucun score fourni ou score insuffisant — la
+  /// règle n'est qu'incitative, jamais une majoration).
+  final int remiseScorePct;
+
   const SimulationAssuranceResult({
     required this.produitRecommande,
     required this.primeEstimee,
     required this.indemnisationEstimee,
     required this.raisonRecommandation,
+    this.remiseScorePct = 0,
   });
 }
 
 class ZoneAleaModel {
   final String id;
   final String nom;
+  final String pays;
   final String typeAlea; // secheresse, inondation, chaleur
   final double latitude;
   final double longitude;
@@ -149,6 +156,7 @@ class ZoneAleaModel {
   const ZoneAleaModel({
     required this.id,
     required this.nom,
+    this.pays = '',
     required this.typeAlea,
     required this.latitude,
     required this.longitude,
@@ -160,6 +168,7 @@ class ZoneAleaModel {
     return ZoneAleaModel(
       id: id,
       nom: data['nom'] ?? '',
+      pays: data['pays'] ?? '',
       typeAlea: data['type_alea'] ?? '',
       latitude: (data['latitude'] ?? 0).toDouble(),
       longitude: (data['longitude'] ?? 0).toDouble(),

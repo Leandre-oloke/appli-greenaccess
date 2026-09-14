@@ -366,7 +366,8 @@ Tests présents (`test/`) :
   Firestore quand des zones y sont déjà présentes. Vérifie explicitement la présence des
   villes UEMOA demandées (Dakar, Thiès, Saint-Louis, Cotonou, Parakou) et l'absence de valeur
   par défaut silencieuse sur chaque champ (`typeAlea`/`niveauRisque` dans l'énumération
-  attendue, coordonnées non nulles, rayon positif).
+  attendue, coordonnées non nulles, rayon positif, `pays` — ajouté en J4.10 pour le ciblage GPS
+  du simulateur — parmi les 8 pays déjà gérés par l'app).
 - `repositories/audit_repository_test.dart` (J3.7-J3.8) — `AuditRepository.logAction()`/
   `fetchLogs()` (écriture des champs attendus, tri du plus récent au plus ancien), puis
   vérifie le branchement réel sur les 4 actions critiques listées par le CDC §6 :
@@ -393,7 +394,12 @@ Tests présents (`test/`) :
   `statut_demande_screen.dart`, `admin_demandes_screen.dart`) — documenté ici, pas corrigé
   (nécessiterait d'embarquer une fonte TTF, un chantier plus large que J3.4-J3.5).
 - `viewmodels/admin_viewmodel_test.dart`
-- `viewmodels/assurance_viewmodel_test.dart`
+- `viewmodels/assurance_viewmodel_test.dart` — étendu en J4.11-J4.12 (CDC §4.1) :
+  `simulerPrime()` module la prime selon le Score Climat par paliers alignés sur
+  `ScoreClimatModel.niveauFromScore` (mêmes bandes que partout ailleurs dans l'app) — aucune
+  réduction sans score ou score insuffisant (jamais de majoration, règle purement incitative),
+  5 % en intermédiaire, 15 % en bon, 25 % en excellent — avec vérification du montant de prime
+  exact à chaque palier et de la mention de la réduction dans `raisonRecommandation`.
 - `viewmodels/auth_viewmodel_test.dart` (J2.23) — connexion (succès, détection + nettoyage de
   compte orphelin, table de correspondance des 7 codes `FirebaseAuthException`→message),
   inscription (succès, `email-already-in-use` avec compte actif réel vs. avec orphelin
@@ -537,6 +543,13 @@ Tests présents (`test/`) :
   bug de production : la tuile d'action « Carte des aléas » sur `AssuranceScreen` pointait vers
   `AppRoutes.fichesProduit` (probablement un espace réservé le temps que l'écran carte
   existe) — corrigée pour pointer vers la nouvelle route `AppRoutes.carteAlea`.
+- `widgets/simulateur_assurance_screen_test.dart` (J4.10-J4.12) — ciblage GPS automatique de la
+  zone (pré-remplissage vers la zone la plus proche de la position détectée, badge « Détectée
+  via votre position », mais **seulement si la permission de localisation est déjà accordée** —
+  ne déclenche jamais de demande de permission depuis cet écran, contrairement au bouton dédié
+  de `CarteAleaScreen`) ; réduction de prime selon le Score Climat (score excellent → -25 %
+  affiché, aucun score calculé → aucune ligne de réduction). Même fake `GeolocatorPlatform` que
+  `carte_alea_screen_test.dart`.
 - `widget_test.dart` — smoke test du design system (`AppTheme` clair/sombre + composants `Ga*`
   se rendent sans exception). Ne boote **pas** `GreenAccessApp` en entier : dès son premier
   `build()`, l'app touche trois plugins Firebase réels (Auth, Firestore, Messaging) dont le
@@ -754,6 +767,21 @@ seulement en local) :
 > existant, jamais branché à une UI avant) avec bouton « Simuler », ou un état vide + lien vers
 > le catalogue complet si aucun produit n'est éligible (attendu : `produits_assurance` n'a pas
 > encore d'outil d'administration pour être peuplée, voir §8 « Fait »).
+>
+> **Phase 4 — J4.10-J4.12 (dernier lot) : ciblage GPS du simulateur + Score Climat comme
+> facteur de prime (CDC §4.1).** J4.10 : `ZoneAleaModel` gagne un champ `pays` (aligné sur les
+> 8 pays déjà gérés par l'app) ; `SimulateurAssuranceScreen` détecte au chargement la zone la
+> plus proche de la position GPS et pré-remplit le champ « Zone géographique » — **seulement
+> si la permission de localisation est déjà accordée** (jamais de demande de permission
+> déclenchée depuis cet écran, à la différence du bouton dédié de `CarteAleaScreen` ; un choix
+> manuel de zone efface le badge « Détectée via votre position »). J4.11-J4.12 :
+> `AssuranceViewModel.simulerPrime()` accepte désormais un `scoreClimat` optionnel et réduit la
+> prime par paliers alignés sur `ScoreClimatModel.niveauFromScore` (mêmes bandes que le
+> dashboard/l'éligibilité financement) : 0 % en insuffisant, 5 % en intermédiaire, 15 % en bon,
+> 25 % en excellent — règle strictement incitative, jamais de majoration pour un score bas ou
+> absent. `SimulateurAssuranceScreen` lit le score courant via `scoringViewModelProvider` et
+> l'affiche comme une ligne « Réduction Score Climat » dédiée dans le résultat
+> (`SimulationAssuranceResult.remiseScorePct`), pas seulement noyé dans le texte libre.
 
 **Fait**
 

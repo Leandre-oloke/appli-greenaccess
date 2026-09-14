@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/assurance_model.dart';
+import '../models/score_climat_model.dart';
 import '../repositories/assurance_repository.dart';
 
 class AssuranceState {
@@ -60,11 +61,16 @@ class AssuranceViewModel extends StateNotifier<AssuranceState> {
     }
   }
 
+  /// [scoreClimat] (0-100, optionnel) intègre le Score Climat au profil de
+  /// risque (J4.11-J4.12, CDC §4.1) : plus le score est élevé, plus la prime
+  /// est réduite — règle purement incitative, jamais de majoration pour un
+  /// score bas ou absent.
   void simulerPrime({
     required String zone,
     required String typeAlea,
     required double superficieCultivee,
     required double valeurAssurable,
+    double? scoreClimat,
   }) {
     final ProduitAssuranceModel produit;
     if (state.produits.isNotEmpty) {
@@ -86,17 +92,44 @@ class AssuranceViewModel extends StateNotifier<AssuranceState> {
       );
     }
     final facteur = (superficieCultivee / 2.0).clamp(0.5, 4.0);
-    final prime = produit.primeMin * facteur;
+    final remisePct = _remiseScoreClimat(scoreClimat);
+    final prime = produit.primeMin * facteur * (1 - remisePct / 100);
     final indemnisation = valeurAssurable * 0.8;
+
+    final raison = StringBuffer(
+      'Produit adapté à votre zone ($zone) pour les risques de ${_typeLabel(typeAlea)}. '
+      'Prime calculée sur ${superficieCultivee.toStringAsFixed(1)} ha.',
+    );
+    if (remisePct > 0) {
+      raison.write(
+        ' Votre Score Climat (${scoreClimat!.toStringAsFixed(0)}/100) vous donne '
+        '$remisePct % de réduction sur cette prime.',
+      );
+    }
+
     state = state.copyWith(
       simulation: SimulationAssuranceResult(
         produitRecommande: produit,
         primeEstimee: prime,
         indemnisationEstimee: indemnisation,
-        raisonRecommandation: 'Produit adapté à votre zone ($zone) pour les risques de ${_typeLabel(typeAlea)}. '
-            'Prime calculée sur ${superficieCultivee.toStringAsFixed(1)} ha.',
+        raisonRecommandation: raison.toString(),
+        remiseScorePct: remisePct,
       ),
     );
+  }
+
+  /// Paliers alignés sur `ScoreClimatModel.niveauFromScore` (mêmes bandes
+  /// que partout ailleurs dans l'app — dashboard, éligibilité financement) :
+  /// un score « Bon »/« Excellent » donne une réduction, un score
+  /// insuffisant/intermédiaire n'en donne pas (pas de pénalité pour autant).
+  int _remiseScoreClimat(double? scoreClimat) {
+    if (scoreClimat == null) return 0;
+    return switch (ScoreClimatModel.niveauFromScore(scoreClimat)) {
+      NiveauScore.excellent => 25,
+      NiveauScore.bon => 15,
+      NiveauScore.intermediaire => 5,
+      NiveauScore.insuffisant => 0,
+    };
   }
 
   String _typeLabel(String type) => switch (type) {

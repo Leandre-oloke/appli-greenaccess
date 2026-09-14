@@ -24,9 +24,15 @@ void main() {
       expect(noms, containsAll(['Dakar', 'Thiès', 'Saint-Louis', 'Cotonou', 'Parakou']));
       // Chaque zone est structurellement valide (pas de valeur par défaut
       // silencieuse masquant un champ manquant dans le JSON).
+      const paysConnus = [
+        'Sénégal', 'Bénin', "Côte d'Ivoire", 'Mali', 'Burkina Faso', 'Niger', 'Togo', 'Guinée',
+      ];
       for (final zone in zones) {
         expect(zone.id, isNotEmpty);
         expect(zone.nom, isNotEmpty);
+        // pays (J4.10) doit correspondre à l'un des 8 pays déjà gérés par
+        // l'app — utilisé pour pré-remplir la zone du simulateur par GPS.
+        expect(zone.pays, isIn(paysConnus));
         expect(zone.typeAlea, isIn(['secheresse', 'inondation', 'chaleur']));
         expect(zone.niveauRisque, isIn(['faible', 'moyen', 'eleve']));
         expect(zone.latitude, isNot(0));
