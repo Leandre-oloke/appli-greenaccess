@@ -60,7 +60,8 @@ lib/
 │   ├── assurance_model.dart         (ProduitAssuranceModel, ContratAssuranceModel, SimulationAssuranceResult, ZoneAleaModel, StatutContrat, SinistreModel)
 │   ├── notification_model.dart      (NotificationModel, NotificationType)
 │   ├── user_data_export_model.dart  (UserDataExportModel — agrégat pour l'export RGPD, J3.4)
-│   └── audit_log_model.dart         (AuditLogModel — journal d'audit inviolable, J3.7)
+│   ├── audit_log_model.dart         (AuditLogModel — journal d'audit inviolable, J3.7)
+│   └── message_model.dart           (MessageModel — messagerie liée à une demande, J5.1)
 │
 ├── repositories/    # accès données Firestore / Storage / Cloud Functions
 │   ├── auth_repository.dart
@@ -73,6 +74,7 @@ lib/
 │   ├── notification_repository.dart
 │   ├── export_repository.dart       (J3.4 — collecte cross-collections pour l'export RGPD)
 │   ├── audit_repository.dart        (J3.7-J3.8 — logAction(), branché sur 4 actions critiques)
+│   ├── messagerie_repository.dart   (J5.2 — envoi + flux temps réel des messages d'une demande)
 │   └── admin_repository.dart
 │
 ├── viewmodels/      # logique de présentation (StateNotifier / Notifier Riverpod)
@@ -84,6 +86,7 @@ lib/
 │   ├── assurance_viewmodel.dart
 │   ├── notification_viewmodel.dart
 │   ├── export_viewmodel.dart        (J3.4-J3.5 — orchestre collecte + génération + partage)
+│   ├── messagerie_viewmodel.dart    (J5.3 — s'abonne au flux temps réel dès sa création)
 │   └── admin_viewmodel.dart
 │
 ├── utils/           # fonctions pures, sans accès Firestore
@@ -312,15 +315,19 @@ Le job `integration` (`ci.yml`) exécute trois suites :
    sécheresse/inondation/chaleur + appel Open-Meteo mocké,
    `functions/test/checkAlertesClimatiques.test.ts`).
 3. `firebase emulators:exec --only firestore` (Java 21 requis) exécute `firestore-tests/`
-   (Node.js, `@firebase/rules-unit-testing`, 27 tests) : isolation des documents
+   (Node.js, `@firebase/rules-unit-testing`, 32 tests) : isolation des documents
    `users/{uid}`, interdiction de s'auto-promouvoir `role: admin` (à la création comme à la
    mise à jour), cloisonnement par propriétaire de `scores_climat`, `demandes_financement`
-   (+ sous-collection `remboursements`), `contrats_assurance`, `sinistres` et `paiements`,
-   droits d'écriture `partenaireFinanceur`/`partenaireAssureur`, lecture ouverte / écriture
-   admin-only pour `produits_assurance`, `zones_alea`, `partenaires` et les notifications
-   globales, et le journal d'audit `audit_logs` (J3.7) : création réservée à sa propre action
-   (`userId == request.auth.uid`), champs requis validés, lecture réservée aux admins,
-   modification/suppression **toujours refusées, même pour un admin** (ajout seul).
+   (+ sous-collections `remboursements` et `messages`), `contrats_assurance`, `sinistres` et
+   `paiements`, droits d'écriture `partenaireFinanceur`/`partenaireAssureur`, lecture ouverte /
+   écriture admin-only pour `produits_assurance`, `zones_alea`, `partenaires` et les
+   notifications globales, le journal d'audit `audit_logs` (J3.7) : création réservée à sa
+   propre action (`userId == request.auth.uid`), champs requis validés, lecture réservée aux
+   admins, modification/suppression **toujours refusées, même pour un admin** (ajout seul), et
+   la messagerie `demandes_financement/{id}/messages` (J5.1-J5.2) : lecture/écriture réservées
+   au propriétaire de la demande, à l'admin et au partenaire financeur, création impossible en
+   usurpant l'identité d'un autre auteur (`auteur_id == request.auth.uid`), modification/
+   suppression toujours refusées (même logique d'ajout seul que `audit_logs`).
 
 Les suites 2 et 3 tournent sous le **même** démarrage d'émulateur Firestore (une seule
 commande `firebase emulators:exec`, deux `npm` enchaînés) pour éviter de le lancer deux fois.
@@ -379,6 +386,10 @@ Tests présents (`test/`) :
   chacune le journal d'audit avec la bonne action et le bon `userId`. Pour `deleteAccount()`,
   vérifie aussi que le log est bien écrit *avant* la suppression du document utilisateur (la
   règle Firestore exige `request.auth.uid`, invalide une fois le compte supprimé).
+- `repositories/messagerie_repository_test.dart` (J5.2) — `envoyerMessage()` écrit les champs
+  attendus dans la sous-collection `demandes_financement/{id}/messages` ;
+  `streamMessages()` émet les messages triés du plus ancien au plus récent, et une nouvelle
+  valeur dès qu'un message est ajouté (flux temps réel, pas un simple `get()`).
 - `integration/rgpd_export_deletion_scenario_test.dart` (J3.9) — parcours complet portabilité
   → effacement sur un même utilisateur : export avant suppression (données présentes), puis
   `AuthRepository.deleteAccount()`, puis vérifie que le profil a disparu, qu'un nouvel export
@@ -429,6 +440,13 @@ Tests présents (`test/`) :
   minuscules à une liste de mots-clés sans accents, donc `'ÉNERGIE'.toLowerCase()` (`'énergie'`)
   n'est jamais reconnu comme secteur vert à cause de l'accent.
 - `viewmodels/formation_viewmodel_test.dart`
+- `viewmodels/messagerie_viewmodel_test.dart` (J5.3) — s'abonne au flux temps réel dès sa
+  création (comme `NotificationViewModel`) : charge les messages déjà présents, démarre vide
+  sans erreur si aucun message n'existe encore, `envoyerMessage()` écrit le message et le fil
+  se met à jour via le flux (pas un rechargement manuel), un contenu vide/blanc n'envoie rien,
+  le contenu est nettoyé (`trim()`) avant l'envoi. Même précaution que pour
+  `NotificationViewModel` (J2.26) : un `read()` immédiat après la création du conteneur de
+  test force l'abonnement à démarrer avant que le test n'attende un court délai.
 - `viewmodels/notification_viewmodel_test.dart` (J2.26) — fusion des flux broadcast (admin →
   tous) et personnel (contrat → un utilisateur) triée par date décroissante et limitée à 50,
   décompte de notifications non lues (`unreadCount`), persistance de `lastReadAt` dans
@@ -816,6 +834,17 @@ seulement en local) :
 > niveau repository, comme documenté en §7, plutôt que d'introduire un nouveau précédent de
 > test isolé).
 
+> **Phase 5 — Messagerie & badges certifiés (démarrée) : J5.1-J5.3, fondations de la
+> messagerie liée à une demande de financement.** `MessageModel` + sous-collection
+> `demandes_financement/{id}/messages` (J5.1), `MessagerieRepository` (J5.2 — envoi de message,
+> flux temps réel via `streamMessages()`), `MessagerieViewModel` (J5.3 — s'abonne au flux dès
+> sa création, comme `NotificationViewModel`). Règle Firestore en ajout seul (même esprit que
+> `audit_logs`) : lecture/écriture réservées au propriétaire de la demande, à l'admin et au
+> partenaire financeur assigné, création impossible en usurpant l'identité d'un autre auteur,
+> modification/suppression toujours refusées une fois un message envoyé. **Pas encore d'écran
+> de conversation** — ces 3 tâches livrent le modèle/repository/viewmodel testables (couverts
+> §7), l'UI viendra dans une tâche ultérieure du plan d'implémentation.
+
 **Fait**
 
 - Architecture MVVM + Riverpod + go_router en place, 5 modules métier câblés bout en bout
@@ -836,24 +865,28 @@ seulement en local) :
 - **CI/CD GitHub Actions** : pipeline `analyze → test → build web / apk debug` sur chaque push
   + workflow de build APK release à la demande (§6ter)
 - Chaîne Android mise à niveau pour Flutter 3.47 (Gradle/AGP/Kotlin)
-- Tests unitaires de ViewModels (91, dont Auth — email et Google —,
-  Financement/Partenaire/NotificationViewModel) + 7 widget tests (LoginScreen,
-  ScoringFormScreen, ScoreResultScreen, DemandeFormScreen, DashboardScreen, FinancementScreen,
-  ProfilScreen — validation, navigation par étapes, verrou de financement CDC §4.1, connexion
-  Google, export RGPD, états d'erreur/chargement) + tests de repositories/fonctions utilitaires
-  purs (`ExportRepository`, `AuditRepository`, `export_formatters.dart` — nouvelle catégorie de
-  tests depuis J3.4, ciblant directement le code métier sans passer par un ViewModel) + 1
-  scénario d'intégration RGPD (export + suppression de compte, J3.9) + smoke test du design
-  system, exécutés en CI ; ont révélé et corrigé 3 bugs réels (débordement de layout,
-  validation jamais déclenchée sur un stepper 7 étapes, pré-remplissage de champ invisible à
+- 178 tests `flutter test` répartis sur 4 catégories (détail complet §7) : ~99 tests unitaires
+  de ViewModels (9 fichiers — Admin/Assurance/Auth/Financement/Formation/Messagerie/
+  Notification/Partenaire/Scoring), 9 widget tests (Login, ScoringForm, ScoreResult,
+  DemandeForm, Dashboard, Financement, Profil, CarteAlea, SimulateurAssurance — validation,
+  navigation par étapes, verrou de financement CDC §4.1, connexion Google, export RGPD, rendu
+  de carte, ciblage GPS, réduction de prime par score, états d'erreur/chargement), des tests de
+  repositories/fonctions utilitaires purs ciblant directement le code métier sans passer par un
+  ViewModel (`ExportRepository`, `AuditRepository`, `AssuranceRepository`,
+  `MessagerieRepository`, `export_formatters.dart` — nouvelle catégorie depuis J3.4), et 2
+  scénarios d'intégration (RGPD export+suppression J3.9, carte→produit paramétrique T06 J4.14)
+  + smoke test du design system, exécutés en CI ; ont révélé et corrigé 3 bugs réels
+  (débordement de layout, validation jamais déclenchée sur un stepper 7 étapes,
+  pré-remplissage de champ invisible à
   l'écran)
 - Couverture de code lcov calculée et publiée en résumé de CI à chaque build (§6ter) — 26 %
   mesurés, sous la cible CDC §7.1 (45-55 %), écart noté pour prioriser les prochaines tâches
   de tests
-- Tests des Firestore Security Rules (`firestore-tests/`, 27 tests) contre l'émulateur, en CI
+- Tests des Firestore Security Rules (`firestore-tests/`, 32 tests) contre l'émulateur, en CI
   (isolation utilisateur, anti-élévation de rôle, droits partenaireFinanceur/partenaireAssureur,
   cloisonnement Assurance/paiements/remboursements, accès admin-only, journal d'audit
-  `audit_logs` en ajout seul et inviolable) — voir §6ter
+  `audit_logs` en ajout seul et inviolable, messagerie de demande de financement en ajout
+  seul réservée au propriétaire/admin/partenaire financeur) — voir §6ter
 - Tests des Cloud Functions (`functions/test/`, 28 tests), en CI — formule `calculerScoreClimat`
   (poids CDC exacts, bornes 0-100, arrondi, contrôle d'accès), triggers `onCourseCompleted`
   (badge + idempotence), `onDemandeSubmitted` (ciblage partenaires financeurs) et

@@ -297,3 +297,81 @@ test('seul un admin peut lire le journal d’audit', async () => {
   await assertFails(alice.doc('audit_logs/log1').get());
   await assertSucceeds(admin.doc('audit_logs/log1').get());
 });
+
+// ── Messagerie liée à une demande de financement (J5.1-J5.2) ───────────────
+
+test('le propriétaire d’une demande peut envoyer un message sur sa propre demande', async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().doc('demandes_financement/d1').set({ userId: 'alice', statut: 'soumis' });
+  });
+  const alice = testEnv.authenticatedContext('alice').firestore();
+  await assertSucceeds(
+    alice.collection('demandes_financement/d1/messages').add({
+      demande_id: 'd1',
+      auteur_id: 'alice',
+      auteur_nom: 'Alice',
+      contenu: 'Bonjour',
+      created_at: new Date(),
+    }),
+  );
+});
+
+test('un autre utilisateur ne peut ni lire ni écrire les messages d’une demande qui n’est pas la sienne', async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await db.doc('demandes_financement/d1').set({ userId: 'alice', statut: 'soumis' });
+    await db.doc('demandes_financement/d1/messages/m1').set({
+      demande_id: 'd1', auteur_id: 'alice', auteur_nom: 'Alice', contenu: 'x', created_at: new Date(),
+    });
+  });
+  const bob = testEnv.authenticatedContext('bob').firestore();
+  await assertFails(bob.doc('demandes_financement/d1/messages/m1').get());
+  await assertFails(
+    bob.collection('demandes_financement/d1/messages').add({
+      demande_id: 'd1', auteur_id: 'bob', auteur_nom: 'Bob', contenu: 'intrusion', created_at: new Date(),
+    }),
+  );
+});
+
+test('un utilisateur ne peut pas envoyer un message en usurpant l’identité d’un autre auteur', async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().doc('demandes_financement/d1').set({ userId: 'alice', statut: 'soumis' });
+  });
+  const alice = testEnv.authenticatedContext('alice').firestore();
+  await assertFails(
+    alice.collection('demandes_financement/d1/messages').add({
+      demande_id: 'd1', auteur_id: 'admin1', auteur_nom: 'Admin', contenu: 'usurpation', created_at: new Date(),
+    }),
+  );
+});
+
+test('un admin peut lire et écrire les messages de n’importe quelle demande', async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await db.doc('demandes_financement/d1').set({ userId: 'alice', statut: 'soumis' });
+    await db.doc('users/admin1').set({ nom: 'Admin', role: 'admin' });
+  });
+  const admin = testEnv.authenticatedContext('admin1').firestore();
+  await assertSucceeds(
+    admin.collection('demandes_financement/d1/messages').add({
+      demande_id: 'd1', auteur_id: 'admin1', auteur_nom: 'Admin', contenu: 'Réponse admin', created_at: new Date(),
+    }),
+  );
+});
+
+test('un message ne peut jamais être modifié ni supprimé, même par son auteur ou un admin', async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await db.doc('demandes_financement/d1').set({ userId: 'alice', statut: 'soumis' });
+    await db.doc('demandes_financement/d1/messages/m1').set({
+      demande_id: 'd1', auteur_id: 'alice', auteur_nom: 'Alice', contenu: 'x', created_at: new Date(),
+    });
+    await db.doc('users/admin1').set({ nom: 'Admin', role: 'admin' });
+  });
+  const alice = testEnv.authenticatedContext('alice').firestore();
+  const admin = testEnv.authenticatedContext('admin1').firestore();
+  await assertFails(alice.doc('demandes_financement/d1/messages/m1').update({ contenu: 'modifié' }));
+  await assertFails(admin.doc('demandes_financement/d1/messages/m1').update({ contenu: 'modifié' }));
+  await assertFails(alice.doc('demandes_financement/d1/messages/m1').delete());
+  await assertFails(admin.doc('demandes_financement/d1/messages/m1').delete());
+});

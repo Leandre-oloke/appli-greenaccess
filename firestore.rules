@@ -118,6 +118,20 @@ service cloud.firestore {
         allow write: if isAdmin()
                      || (isAuth() && get(/databases/$(database)/documents/demandes_financement/$(demandeId)).data.userId == request.auth.uid);
       }
+
+      // Sous-collection messages (J5.1-J5.2) — fil de discussion entre
+      // l'emprunteur, l'admin et le partenaire financeur sur cette demande.
+      // Ajout seul : un message envoyé n'est ni modifié ni supprimé.
+      match /messages/{messageId} {
+        allow read: if isAdmin()
+                    || isPartenaireFinanceur()
+                    || (isAuth() && get(/databases/$(database)/documents/demandes_financement/$(demandeId)).data.userId == request.auth.uid);
+        allow create: if (isAdmin()
+                      || isPartenaireFinanceur()
+                      || (isAuth() && get(/databases/$(database)/documents/demandes_financement/$(demandeId)).data.userId == request.auth.uid))
+                      && request.resource.data.auteur_id == request.auth.uid;
+        allow update, delete: if false;
+      }
     }
 
     // ── Paiements ─────────────────────────────────────────────────────────────
