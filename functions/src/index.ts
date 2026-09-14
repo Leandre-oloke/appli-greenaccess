@@ -93,7 +93,17 @@ export function resilienceToScore(resilience: number): number {
   return Math.max(0, Math.min(100, resilience * 20));
 }
 
-async function getBonusFormation(userId: string): Promise<number> {
+// Exportée pour être testable directement (J5.17, scénario T02). Le filtre
+// `.where("dateObtention", ...)` a été retiré : il ciblait un champ en
+// camelCase qu'aucun badge n'écrit jamais (tous les déclencheurs — client et
+// Cloud Function — stockent `date_obtention` en snake_case, voir le bug
+// analogue corrigé en J5.11-J5.12) ; ce filtre écartait donc silencieusement
+// TOUS les badges, rendant le bonus de +3 pts/badge inopérant côté serveur
+// depuis toujours. Chaque badge a de toute façon systématiquement une date
+// d'obtention dès sa création (aucun état "en attente" à filtrer) — même
+// requête, sans `.where()`, que `ScoreRepository._getBonusFormation()` côté
+// Dart (repli local).
+export async function getBonusFormation(userId: string): Promise<number> {
   const progressSnap = await db
     .collection("users")
     .doc(userId)
@@ -102,12 +112,7 @@ async function getBonusFormation(userId: string): Promise<number> {
     .get();
 
   const completedCourses = progressSnap.size;
-  const badgesSnap = await db
-    .collection("users")
-    .doc(userId)
-    .collection("badges")
-    .where("dateObtention", "!=", null)
-    .get();
+  const badgesSnap = await db.collection("users").doc(userId).collection("badges").get();
 
   const badges = badgesSnap.size;
   // +2 pts par cours, +3 pts par badge certifié, max 15 pts

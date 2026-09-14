@@ -322,7 +322,14 @@ Le job `integration` (`ci.yml`) exécute trois suites :
    testable sans jamais toucher le vrai `admin.messaging()`, même fichier),
    `MockOpenBadgeIssuer` (J5.10-J5.12 — assertion OpenBadge v2 + URL, tracée dans
    `issuedBadges`, branchée sur `onCourseCompleted` qui stocke désormais l'URL réelle dans
-   `openbadge_url` au lieu de `null`, même fichier), `checkAlertesClimatiques` (seuils
+   `openbadge_url` au lieu de `null`, même fichier), `getBonusFormation` + scénario T02
+   (J5.17, CDC §7.1 · T02 — même fichier) : un badge délivré via `onCourseCompleted`
+   (`BadgeIssuer`) est bien compté par `getBonusFormation()`, dont le score total reflète le
+   bonus jusqu'à `calculerScoreClimat()` ; a révélé que le filtre
+   `.where("dateObtention", ...)` de `getBonusFormation()` ciblait un champ camelCase qu'aucun
+   badge n'écrit (tous en snake_case `date_obtention`), excluant silencieusement tous les
+   badges du bonus de score côté serveur — corrigé en retirant ce filtre inutile (chaque badge
+   a systématiquement une date dès sa création), et `checkAlertesClimatiques` (seuils
    sécheresse/inondation/chaleur + appel Open-Meteo mocké,
    `functions/test/checkAlertesClimatiques.test.ts`).
 3. `firebase emulators:exec --only firestore` (Java 21 requis) exécute `firestore-tests/`
@@ -420,6 +427,10 @@ Tests présents (`test/`) :
   n'est pas un test Flutter contre de vrais émulateurs (bloqué dans ce Codespace) : le
   scénario T11 est validé avec les vrais repositories enchaînés dans l'ordre du parcours
   utilisateur, contre un `FakeFirebaseFirestore` partagé.
+- `utils/badge_export_formatters_test.dart` (J5.16, CDC §5) — `buildBadgesJson()` n'inclut que
+  les badges obtenus (avec `openbadge_url` quand disponible), liste vide sans badge obtenu ;
+  `buildBadgesPdf()` produit un PDF non vide avec l'en-tête standard `%PDF-`, même sans aucun
+  badge obtenu.
 - `utils/eligibilite_financement_test.dart` (J5.14, CDC §4.1) — fonction pure
   `scoreEligibiliteFinancement()` : score inchangé sans le badge Assuré Climat, +10 pts avec,
   le bonus peut faire franchir le seuil d'éligibilité (60), plafond à 100 même avec le bonus.
@@ -632,6 +643,18 @@ Tests présents (`test/`) :
   `firestore-tests/rules.test.mjs` (34 tests, dont les cas assigné/non-assigné de J5.5) —
   `FakeFirebaseFirestore` n'applique aucune Security Rule, voir plus bas pour la même limite sur
   les autres scénarios d'intégration de ce dossier.
+- `widgets/badges_screen_test.dart` (J5.16) — bouton d'export désactivé tant qu'aucun badge
+  n'est obtenu, ouverture du choix JSON/PDF sinon, chaque choix appelle bien
+  `exporterBadgesJson()`/`exporterBadgesPdf()` sur `FormationViewModel`. Même stratégie que
+  `profil_screen_test.dart` (J3.6) pour éviter les canaux de plateforme réels de
+  `share_plus`/`printing` : les deux méthodes sont surchargées en no-op tracé sur une
+  sous-classe fake plutôt qu'appelées pour de vrai.
+- `integration/regle_eligibilite_assure_climat_test.dart` (J5.18, CDC §7.1) —
+  non-régression de la règle 4.1 (J5.14) : scénario complet où
+  `CoursRepository.triggerAssureClimatBadge()` délivre réellement le badge, dont l'effet sur
+  `scoreEligibiliteFinancement()` est ensuite vérifié (+10 pts, franchissement du seuil de 60,
+  plafond à 100) — vient compléter les tests unitaires purs de la règle déjà écrits en J5.14
+  (`test/utils/eligibilite_financement_test.dart`).
 - `widget_test.dart` — smoke test du design system (`AppTheme` clair/sombre + composants `Ga*`
   se rendent sans exception). Ne boote **pas** `GreenAccessApp` en entier : dès son premier
   `build()`, l'app touche trois plugins Firebase réels (Auth, Firestore, Messaging) dont le
@@ -882,7 +905,7 @@ seulement en local) :
 > niveau repository, comme documenté en §7, plutôt que d'introduire un nouveau précédent de
 > test isolé).
 
-> **Phase 5 — Messagerie & badges certifiés (J5.1-J5.15 terminées) : messagerie liée à une
+> **Phase 5 — Messagerie & badges certifiés (J5.1-J5.18 terminées) : messagerie liée à une
 > demande de financement, bout en bout, et émission de badges certifiés.** `MessageModel` +
 > sous-collection
 > `demandes_financement/{id}/messages` (J5.1), `MessagerieRepository` (J5.2 — envoi de message,
@@ -949,6 +972,36 @@ seulement en local) :
 > `CoursRepository.triggerFinanceVertBadge()`, branché dans `AdminViewModel.approuverDemande()`
 > juste après l'envoi de la notification d'approbation, même pattern idempotent
 > (`existing.exists`) que le badge Assuré Climat.
+>
+> **Export de badges + tests de non-régression (J5.16-J5.18).** Écran `BadgesScreen` : bouton
+> d'export (icône AppBar, désactivé tant qu'aucun badge n'est obtenu) ouvrant un choix
+> JSON/PDF, même stratégie de dialogue que l'export RGPD de `profil_screen.dart` (J3.4-J3.5).
+> `lib/utils/badge_export_formatters.dart` (J5.16, CDC §5) : `buildBadgesJson()` inclut
+> `openbadge_url` — le lien vers l'assertion OpenBadge v2 certifiée (J5.10-J5.12) quand
+> disponible, la preuve vérifiable hors de l'app que ce format permet d'emporter ;
+> `buildBadgesPdf()` génère un résumé imprimable. Les deux méthodes vivent sur
+> `FormationViewModel` (badges déjà chargés en état) plutôt que sur un `ExportViewModel` dédié.
+>
+> Scénario T02 (J5.17, CDC §7.1 · T02 — « badge délivré via le service + score incrémenté ») :
+> en l'écrivant, un vrai bug de production est apparu dans `getBonusFormation()`
+> (`functions/src/index.ts`, calcul serveur du bonus de score lié aux formations/badges,
+> §4.4) — son filtre `.where("dateObtention", "!=", null)` ciblait un champ en camelCase
+> qu'aucun badge n'écrit jamais (tous les déclencheurs, client comme Cloud Function, stockent
+> `date_obtention` en snake_case). Ce filtre excluait donc silencieusement TOUS les badges de
+> ce calcul depuis toujours : le bonus de +3 pts par badge n'a jamais réellement été appliqué
+> côté serveur (le chemin de calcul faisant foi, §4.4), bien que le repli local Dart
+> (`ScoreRepository._getBonusFormation()`, sans ce filtre) l'ait toujours appliqué correctement
+> — une divergence silencieuse entre le calcul serveur et son propre repli de secours. Corrigé
+> en retirant le filtre (chaque badge a de toute façon systématiquement une date d'obtention
+> dès sa création, aucun état à filtrer), couvert par un test de régression dédié puis par le
+> scénario T02 complet (badge livré par `onCourseCompleted`/`BadgeIssuer` → `getBonusFormation()`
+> → `calculerScoreClimat()` bout en bout).
+>
+> Test de la règle +10 (J5.18, CDC §7.1) : scénario d'intégration dédié
+> (`test/integration/regle_eligibilite_assure_climat_test.dart`) enchaînant les vraies classes
+> (`CoursRepository.triggerAssureClimatBadge()` → `scoreEligibiliteFinancement()`), au-delà des
+> tests unitaires purs déjà écrits en J5.14 — garde-fou contre toute régression de cette
+> incitation croisée.
 
 **Fait**
 
@@ -970,23 +1023,25 @@ seulement en local) :
 - **CI/CD GitHub Actions** : pipeline `analyze → test → build web / apk debug` sur chaque push
   + workflow de build APK release à la demande (§6ter)
 - Chaîne Android mise à niveau pour Flutter 3.47 (Gradle/AGP/Kotlin)
-- 195 tests `flutter test` répartis sur 4 catégories (détail complet §7) : ~103 tests unitaires
+- 205 tests `flutter test` répartis sur 4 catégories (détail complet §7) : ~103 tests unitaires
   de ViewModels (9 fichiers — Admin/Assurance/Auth/Financement/Formation/Messagerie/
-  Notification/Partenaire/Scoring, dont le badge Financé Vert à l'approbation, J5.15), 10 widget
+  Notification/Partenaire/Scoring, dont le badge Financé Vert à l'approbation, J5.15), 11 widget
   tests (Login, ScoringForm, ScoreResult, DemandeForm, Dashboard, Financement, Profil, CarteAlea,
-  SimulateurAssurance, MessageriePartenaire — validation, navigation par étapes, verrou de
-  financement CDC §4.1 et son bonus du badge Assuré Climat (J5.14), connexion Google, export
+  SimulateurAssurance, MessageriePartenaire, Badges — validation, navigation par étapes, verrou
+  de financement CDC §4.1 et son bonus du badge Assuré Climat (J5.14), connexion Google, export
   RGPD, rendu de carte, ciblage GPS, réduction de prime par score, interface de chat (état vide,
-  bulles par auteur, envoi), états d'erreur/chargement), des tests de repositories/fonctions
-  utilitaires purs ciblant directement le code métier sans passer par un ViewModel
-  (`ExportRepository`, `AuditRepository`, `AssuranceRepository` — dont le badge Assuré Climat à
-  la souscription, J5.13 —, `CoursRepository` — badges Assuré Climat/Financé Vert, nouveau
-  fichier de test —, `MessagerieRepository`, `export_formatters.dart`,
-  `eligibilite_financement.dart` — règle 4.1, J5.14, nouvelle catégorie depuis J3.4), et 3
+  bulles par auteur, envoi), export de badges JSON/PDF (J5.16), états d'erreur/chargement), des
+  tests de repositories/fonctions utilitaires purs ciblant directement le code métier sans
+  passer par un ViewModel (`ExportRepository`, `AuditRepository`, `AssuranceRepository` — dont
+  le badge Assuré Climat à la souscription, J5.13 —, `CoursRepository` — badges Assuré
+  Climat/Financé Vert, nouveau fichier de test —, `MessagerieRepository`,
+  `export_formatters.dart`, `eligibilite_financement.dart` — règle 4.1, J5.14 —,
+  `badge_export_formatters.dart` — export JSON/PDF, J5.16, nouvelle catégorie depuis J3.4), et 4
   scénarios d'intégration (RGPD export+suppression J3.9, carte→produit paramétrique T06 J4.14,
-  conversation demandeur/partenaire J5.9) + smoke test du design system, exécutés en CI ; ont
-  révélé et corrigé 3 bugs réels (débordement de layout, validation jamais déclenchée sur un
-  stepper 7 étapes, pré-remplissage de champ invisible à
+  conversation demandeur/partenaire J5.9, règle +10 d'éligibilité du badge Assuré Climat J5.18)
+  + smoke test du design system, exécutés en CI ; ont révélé et corrigé 3 bugs réels de
+  frontend (débordement de layout, validation jamais déclenchée sur un stepper 7 étapes,
+  pré-remplissage de champ invisible à
   l'écran)
 - Couverture de code lcov calculée et publiée en résumé de CI à chaque build (§6ter) — 26 %
   mesurés, sous la cible CDC §7.1 (45-55 %), écart noté pour prioriser les prochaines tâches
@@ -997,15 +1052,20 @@ seulement en local) :
   `audit_logs` en ajout seul et inviolable, messagerie de demande de financement en ajout
   seul réservée au propriétaire/admin/partenaire financeur spécifiquement assigné à la
   demande — assigné vs. non-assigné, J5.5) — voir §6ter
-- Tests des Cloud Functions (`functions/test/`, 43 tests), en CI — formule `calculerScoreClimat`
+- Tests des Cloud Functions (`functions/test/`, 45 tests), en CI — formule `calculerScoreClimat`
   (poids CDC exacts, bornes 0-100, arrondi, contrôle d'accès), triggers `onCourseCompleted`
   (badge + idempotence + émission OpenBadge mockée, J5.10-J5.12), `onDemandeSubmitted`
   (ciblage partenaires financeurs), `onMessageSent` (J5.6 — notification au destinataire d'un
   message), canal de secours WhatsApp mocké + sélection automatique de canal FCM→WhatsApp
-  (J5.7-J5.8) et `checkAlertesClimatiques` (seuils sécheresse/inondation/chaleur, Open-Meteo
-  mocké) ; a
-  révélé et corrigé un bug réel de borne basse manquante (score négatif possible avec une
-  entrée hors plage)
+  (J5.7-J5.8), `getBonusFormation` + scénario T02 (J5.17 — badge délivré via le service, puis
+  score incrémenté bout en bout jusqu'à `calculerScoreClimat`) et `checkAlertesClimatiques`
+  (seuils sécheresse/inondation/chaleur, Open-Meteo mocké) ; ont révélé et corrigé 2 bugs réels
+  côté fonctions : une borne basse manquante (score négatif possible avec une entrée hors
+  plage) et, en écrivant le scénario T02 (J5.17), un filtre Firestore ciblant un champ en
+  camelCase (`dateObtention`) que plus aucun badge n'écrit depuis longtemps (snake_case
+  `date_obtention`) — le bonus de +3 pts/badge du score n'était donc jamais réellement
+  appliqué côté serveur, malgré un repli local Dart qui, lui, fonctionnait correctement
+  (§4.4)
 - Tests d'intégration Flutter écrits (`integration_test/`) pour AuthRepository,
   ScoreRepository, FinancementRepository et CoursRepository contre les émulateurs — leur
   écriture a révélé et corrigé 7 bugs réels de correspondance de schéma/config (client ↔

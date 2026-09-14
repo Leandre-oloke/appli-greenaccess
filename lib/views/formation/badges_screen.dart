@@ -28,7 +28,18 @@ class _BadgesScreenState extends ConsumerState<BadgesScreen> {
     final state = ref.watch(formationViewModelProvider(uid));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Mes Badges')),
+      appBar: AppBar(
+        title: const Text('Mes Badges'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.ios_share),
+            tooltip: 'Exporter mes badges',
+            onPressed: state.badges.any((b) => b.isObtenu)
+                ? () => _showExportDialog(context, uid)
+                : null,
+          ),
+        ],
+      ),
       body: state.isLoading
           ? const Center(child: CircularProgressIndicator())
           : state.badges.isEmpty
@@ -53,6 +64,65 @@ class _BadgesScreenState extends ConsumerState<BadgesScreen> {
                     ),
                   ],
                 ),
+    );
+  }
+
+  /// Choix JSON (assertion OpenBadge v2 incluse, J5.10-J5.12) / PDF
+  /// (J5.16) — même stratégie de dialogue que l'export RGPD de
+  /// `profil_screen.dart` (`_showExportDialog`, J3.4-J3.5).
+  Future<void> _showExportDialog(BuildContext context, String userId) async {
+    bool isLoading = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Exporter mes badges'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Emportez vos badges obtenus, avec le lien vers leur assertion '
+                'OpenBadge certifiée quand disponible.',
+                style: TextStyle(fontSize: 13),
+              ),
+              if (isLoading) ...[
+                const SizedBox(height: 16),
+                const Center(child: CircularProgressIndicator()),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isLoading ? null : () => Navigator.pop(ctx),
+              child: const Text('Annuler'),
+            ),
+            TextButton(
+              onPressed: isLoading
+                  ? null
+                  : () async {
+                      setDialogState(() => isLoading = true);
+                      await ref.read(formationViewModelProvider(userId).notifier).exporterBadgesJson();
+                      if (!ctx.mounted) return;
+                      Navigator.pop(ctx);
+                    },
+              child: const Text('JSON'),
+            ),
+            FilledButton(
+              onPressed: isLoading
+                  ? null
+                  : () async {
+                      setDialogState(() => isLoading = true);
+                      await ref.read(formationViewModelProvider(userId).notifier).exporterBadgesPdf();
+                      if (!ctx.mounted) return;
+                      Navigator.pop(ctx);
+                    },
+              child: const Text('PDF'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -1,8 +1,15 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
+
 import '../models/course_model.dart';
 import '../models/lecon_model.dart';
 import '../models/badge_model.dart';
 import '../repositories/cours_repository.dart';
+import '../utils/badge_export_formatters.dart';
 
 class FormationState {
   final List<CourseModel> courses;
@@ -106,6 +113,41 @@ class FormationViewModel extends StateNotifier<FormationState> {
 
   Future<void> trackProgress(String courseId) async {
     await loadCourses();
+  }
+
+  // ── Export des badges (J5.16, CDC §5) ─────────────────────────────────────
+
+  String _todayStamp() {
+    final now = DateTime.now();
+    return '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> exporterBadgesJson() async {
+    try {
+      final json = buildBadgesJson(state.badges);
+      final bytes = Uint8List.fromList(utf8.encode(json));
+      await Share.shareXFiles([
+        XFile.fromData(
+          bytes,
+          mimeType: 'application/json',
+          name: 'greenaccess_badges_${_todayStamp()}.json',
+        ),
+      ]);
+    } catch (e) {
+      state = state.copyWith(error: 'Export impossible. Réessayez.');
+    }
+  }
+
+  Future<void> exporterBadgesPdf() async {
+    try {
+      final bytes = await buildBadgesPdf(state.badges);
+      await Printing.sharePdf(
+        bytes: bytes,
+        filename: 'greenaccess_badges_${_todayStamp()}.pdf',
+      );
+    } catch (e) {
+      state = state.copyWith(error: 'Export impossible. Réessayez.');
+    }
   }
 }
 

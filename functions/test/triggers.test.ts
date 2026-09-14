@@ -26,12 +26,15 @@ import {
   NotificationService,
   defaultWhatsAppChannel,
   MockOpenBadgeIssuer,
+  getBonusFormation,
+  calculerScoreClimat,
 } from "../src/index";
 
 const db = admin.firestore();
 const wrappedOnCourseCompleted = testEnv.wrap(onCourseCompleted);
 const wrappedOnDemandeSubmitted = testEnv.wrap(onDemandeSubmitted);
 const wrappedOnMessageSent = testEnv.wrap(onMessageSent);
+const wrappedCalculerScoreClimat = testEnv.wrap(calculerScoreClimat);
 
 // Nettoie entre les tests pour éviter qu'un document d'un test précédent
 // (même collection, ids fixes) ne fausse une assertion.
@@ -189,6 +192,61 @@ test("onCourseCompleted stocke l'URL OpenBadge émise dans openbadge_url (J5.11-
     "https://badges.greenaccess.test/assertions/erin-badge-course5",
   );
   assert.ok(badgeSnap.data()?.date_obtention);
+});
+
+// ── J5.17 — scénario T02 : badge délivré via le service + score incrémenté ──
+
+test("getBonusFormation compte les badges existants (régression du bug dateObtention/date_obtention)", async () => {
+  await clearCollection("users");
+  await db.collection("users").doc("fanta").collection("badges").doc("b1").set({
+    nom: "Un badge", date_obtention: new Date(),
+  });
+
+  // Avant le correctif de J5.17, le filtre `.where("dateObtention", ...)`
+  // (camelCase, jamais écrit par aucun déclencheur) excluait silencieusement
+  // CE badge : getBonusFormation() renvoyait toujours 0 pour cette part du
+  // bonus, quel que soit le nombre de badges réellement détenus.
+  const bonus = await getBonusFormation("fanta");
+  assert.equal(bonus, 3);
+});
+
+test("T02 — un badge délivré via onCourseCompleted (BadgeIssuer) incrémente le score via calculerScoreClimat", async () => {
+  await clearCollection("users");
+  await db.collection("courses").doc("courseT02").set({ badge_id: "badge-t02", titre: "Cours T02" });
+  await db.collection("users").doc("fatou").set({ role: "user" });
+
+  const bonusAvant = await getBonusFormation("fatou");
+  assert.equal(bonusAvant, 0);
+
+  const after_ = testEnv.firestore.makeDocumentSnapshot(
+    { statut: "TERMINE", badge_declenche: true, score_quiz: 80 },
+    "users/fatou/progress/courseT02",
+  );
+  await wrappedOnCourseCompleted(
+    testEnv.makeChange(testEnv.firestore.makeDocumentSnapshot({}, "users/fatou/progress/courseT02"), after_),
+    { params: { userId: "fatou", courseId: "courseT02" } },
+  );
+
+  const badgeSnap = await db.collection("users").doc("fatou").collection("badges").doc("badge-t02").get();
+  assert.equal(badgeSnap.exists, true, "le badge doit avoir été délivré par le service (BadgeIssuer)");
+
+  const bonusApres = await getBonusFormation("fatou");
+  assert.equal(bonusApres, 3, "1 badge délivré → +3 pts de bonusFormation");
+
+  // Bout en bout : le score total renvoyé par calculerScoreClimat reflète
+  // bien ce bonus, pas seulement la valeur intermédiaire getBonusFormation().
+  const result: any = await wrappedCalculerScoreClimat(
+    {
+      userId: "fatou",
+      typeActivite: "Agriculture",
+      alignementUemoa: "Non",
+      reductionCo2: 0,
+      certifications: [],
+      resilience: 1,
+    },
+    { auth: { uid: "fatou" } },
+  );
+  assert.equal(result.criteres.bonus_formation, 3);
 });
 
 // ── J2.14 — onDemandeSubmitted : notification aux partenaires financeurs ───
