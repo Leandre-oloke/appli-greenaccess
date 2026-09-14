@@ -170,6 +170,28 @@ class CoursRepository {
     });
   }
 
+  /// Badge "Financé Vert" à l'approbation d'une demande de financement
+  /// (J5.15, CDC §4.3) — même pattern que [triggerAssureClimatBadge].
+  Future<void> triggerFinanceVertBadge(String userId) async {
+    const badgeId = 'finance_vert';
+    final badgeRef = _firestore
+        .collection('users')
+        .doc(userId)
+        .collection('badges')
+        .doc(badgeId);
+
+    final existing = await badgeRef.get();
+    if (existing.exists) return;
+
+    await badgeRef.set({
+      'nom': 'Financé Vert 🌱',
+      'description': 'Votre demande de financement vert a été approuvée. Votre projet est en route.',
+      'image_url': '',
+      'type': 'financement',
+      'date_obtention': FieldValue.serverTimestamp(),
+    });
+  }
+
   Future<List<CourseProgress>> fetchProgress(String userId) async {
     final snapshot = await _firestore
         .collection('users')

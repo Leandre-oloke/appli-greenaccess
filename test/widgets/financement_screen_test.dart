@@ -2,6 +2,7 @@
 // selon le score Climat (seuil 60/100, CDC §4.1) — sans Firebase réel (voir
 // README.md §7). Même stratégie de fake que les autres tests widgets de ce
 // dossier.
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -13,10 +14,13 @@ import 'package:mockito/mockito.dart';
 import 'package:greenaccess/models/score_climat_model.dart';
 import 'package:greenaccess/models/user_model.dart';
 import 'package:greenaccess/repositories/auth_repository.dart';
+import 'package:greenaccess/repositories/cours_repository.dart';
 import 'package:greenaccess/repositories/financement_repository.dart';
 import 'package:greenaccess/repositories/score_repository.dart';
+import 'package:greenaccess/utils/eligibilite_financement.dart';
 import 'package:greenaccess/viewmodels/auth_viewmodel.dart';
 import 'package:greenaccess/viewmodels/financement_viewmodel.dart';
+import 'package:greenaccess/viewmodels/formation_viewmodel.dart';
 import 'package:greenaccess/viewmodels/scoring_viewmodel.dart';
 import 'package:greenaccess/views/financement/financement_screen.dart';
 
@@ -71,7 +75,7 @@ ScoreClimatModel _score(double total) => ScoreClimatModel(
       versionAlgo: 'v1-cloud',
     );
 
-Widget _buildFinancement(double? scoreTotal) {
+Widget _buildFinancement(double? scoreTotal, {FirebaseFirestore? coursFirestore}) {
   return ProviderScope(
     overrides: [
       authViewModelProvider.overrideWith((ref) => _FakeAuthViewModel(_userId)),
@@ -86,6 +90,17 @@ Widget _buildFinancement(double? scoreTotal) {
       financementViewModelProvider.overrideWith(
         (ref, userId) => FinancementViewModel(
           FinancementRepository(firestore: FakeFirebaseFirestore()),
+          userId,
+        ),
+      ),
+      // Règle 4.1 (J5.14) : FormationScreen appelle loadCourses() dans
+      // initState(), qui interroge réellement ce Firestore fake pour les
+      // badges — le badge Assuré Climat doit donc y être semé à l'avance
+      // (voir les tests dédiés plus bas), pas assigné directement sur
+      // vm.state qui serait écrasé par le loadCourses() bien réel.
+      formationViewModelProvider.overrideWith(
+        (ref, userId) => FormationViewModel(
+          CoursRepository(firestore: coursFirestore ?? FakeFirebaseFirestore()),
           userId,
         ),
       ),
@@ -144,6 +159,36 @@ void main() {
     expect(find.text('Score insuffisant'), findsOneWidget);
     expect(find.text('Score: 0/100 — Minimum requis: 60/100'), findsOneWidget);
     expect(find.text('Nouvelle demande'), findsNothing);
+  });
+
+  group('Règle 4.1 — bonus du badge Assuré Climat (J5.14)', () {
+    testWidgets('le badge Assuré Climat ajoute +10 pts au score affiché et à l\'éligibilité',
+        (tester) async {
+      final db = FakeFirebaseFirestore();
+      await db.collection('users').doc(_userId).collection('badges').doc(badgeIdAssureClimat).set({
+        'nom': 'Assuré Climat',
+        'description': '',
+        'image_url': '',
+        'type': 'assurance',
+        'date_obtention': DateTime.now(),
+      });
+
+      await tester.pumpWidget(_buildFinancement(52, coursFirestore: db));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Éligible au financement'), findsOneWidget);
+      expect(find.text('Score Climat: 62/100 ✓'), findsOneWidget);
+      expect(find.text('+10 pts grâce au badge Assuré Climat 🌿'), findsOneWidget);
+    });
+
+    testWidgets('sans le badge, le même score de départ reste sous le seuil', (tester) async {
+      await tester.pumpWidget(_buildFinancement(52, coursFirestore: FakeFirebaseFirestore()));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Score insuffisant'), findsOneWidget);
+      expect(find.text('Score: 52/100 — Minimum requis: 60/100'), findsOneWidget);
+      expect(find.text('+10 pts grâce au badge Assuré Climat 🌿'), findsNothing);
+    });
   });
 
   testWidgets('affiche l\'état vide quand aucune demande n\'existe', (tester) async {

@@ -5,6 +5,7 @@ import '../models/lecon_model.dart';
 import '../models/user_model.dart';
 import '../models/demande_financement_model.dart';
 import '../repositories/admin_repository.dart';
+import '../repositories/cours_repository.dart';
 
 class AdminState {
   final Map<String, int> stats;
@@ -58,7 +59,10 @@ class AdminState {
 
 class AdminViewModel extends StateNotifier<AdminState> {
   final AdminRepository _repo;
-  AdminViewModel(this._repo) : super(const AdminState());
+  final CoursRepository _coursRepo;
+  AdminViewModel(this._repo, [CoursRepository? coursRepo])
+      : _coursRepo = coursRepo ?? CoursRepository(),
+        super(const AdminState());
 
   // ── Chargements ────────────────────────────────────────────────────────────
 
@@ -303,6 +307,8 @@ class AdminViewModel extends StateNotifier<AdminState> {
               'a été approuvée. Un partenaire prendra contact avec vous.',
           type: 'success',
         );
+        // Badge "Financé Vert" à l'approbation (J5.15, CDC §4.3).
+        await _coursRepo.triggerFinanceVertBadge(demande.userId);
       }
       await loadDemandes();
       state = state.copyWith(successMessage: 'Demande approuvée');

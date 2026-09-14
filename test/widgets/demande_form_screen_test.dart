@@ -17,10 +17,12 @@ import 'package:mockito/mockito.dart';
 
 import 'package:greenaccess/models/user_model.dart';
 import 'package:greenaccess/repositories/auth_repository.dart';
+import 'package:greenaccess/repositories/cours_repository.dart';
 import 'package:greenaccess/repositories/financement_repository.dart';
 import 'package:greenaccess/repositories/score_repository.dart';
 import 'package:greenaccess/viewmodels/auth_viewmodel.dart';
 import 'package:greenaccess/viewmodels/financement_viewmodel.dart';
+import 'package:greenaccess/viewmodels/formation_viewmodel.dart';
 import 'package:greenaccess/viewmodels/scoring_viewmodel.dart';
 import 'package:greenaccess/views/financement/demande_form_screen.dart';
 
@@ -77,6 +79,11 @@ Widget _buildDemandeForm() {
           FinancementRepository(firestore: FakeFirebaseFirestore()),
           userId,
         ),
+      ),
+      // Règle 4.1 (J5.14) : _submit() lit formationViewModelProvider pour le
+      // bonus du badge Assuré Climat — même raison que les overrides ci-dessus.
+      formationViewModelProvider.overrideWith(
+        (ref, userId) => FormationViewModel(CoursRepository(firestore: FakeFirebaseFirestore()), userId),
       ),
     ],
     child: MaterialApp(

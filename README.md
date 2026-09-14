@@ -391,7 +391,15 @@ Tests présents (`test/`) :
   du simulateur — parmi les 8 pays déjà gérés par l'app). Étendu en J4.15 (import admin) :
   `importDefaultZonesAlea()` écrit les 16 zones bundlées dans Firestore (avec `pays`), un
   second import écrase proprement sans créer de doublons (upsert par `id`, pas d'ajout brut), et
-  `deleteZoneAlea()` retire uniquement la zone visée.
+  `deleteZoneAlea()` retire uniquement la zone visée. Étendu en J5.13 : `soumettreDossier()`
+  délivre bien le badge Assuré Climat au souscripteur, de façon idempotente (pas de doublon à
+  une seconde souscription) — ce branchement, hérité d'un travail antérieur à la Phase 5,
+  n'avait encore aucune couverture de test directe.
+- `repositories/cours_repository_test.dart` (J5.13, J5.15) — nouveau fichier, jusqu'ici
+  `CoursRepository` n'était exercée qu'indirectement via des fakes dans
+  `formation_viewmodel_test.dart`. Couvre les deux déclencheurs de badges liés à d'autres
+  modules : `triggerFinanceVertBadge()` (Financement) et `triggerAssureClimatBadge()`
+  (Assurance), même pattern idempotent que les badges de formation.
 - `repositories/audit_repository_test.dart` (J3.7-J3.8) — `AuditRepository.logAction()`/
   `fetchLogs()` (écriture des champs attendus, tri du plus récent au plus ancien), puis
   vérifie le branchement réel sur les 4 actions critiques listées par le CDC §6 :
@@ -412,6 +420,9 @@ Tests présents (`test/`) :
   n'est pas un test Flutter contre de vrais émulateurs (bloqué dans ce Codespace) : le
   scénario T11 est validé avec les vrais repositories enchaînés dans l'ordre du parcours
   utilisateur, contre un `FakeFirebaseFirestore` partagé.
+- `utils/eligibilite_financement_test.dart` (J5.14, CDC §4.1) — fonction pure
+  `scoreEligibiliteFinancement()` : score inchangé sans le badge Assuré Climat, +10 pts avec,
+  le bonus peut faire franchir le seuil d'éligibilité (60), plafond à 100 même avec le bonus.
 - `utils/export_formatters_test.dart` (J3.5) — fonctions pures (`buildExportCsv`,
   `buildExportPdf`), testées sans Firestore à partir d'un `UserDataExportModel` fixe : contenu
   attendu par section, CSV valide même sans aucune donnée (en-têtes seuls), PDF non vide avec
@@ -421,7 +432,8 @@ Tests présents (`test/`) :
   remarqué, faute de test) dans les 3 autres exports PDF de l'app (`score_result_screen.dart`,
   `statut_demande_screen.dart`, `admin_demandes_screen.dart`) — documenté ici, pas corrigé
   (nécessiterait d'embarquer une fonte TTF, un chantier plus large que J3.4-J3.5).
-- `viewmodels/admin_viewmodel_test.dart`
+- `viewmodels/admin_viewmodel_test.dart` — étendu en J5.15 : `approuverDemande()` délivre bien
+  le badge Financé Vert au demandeur, en plus de la notification d'approbation déjà couverte.
 - `viewmodels/assurance_viewmodel_test.dart` — étendu en J4.11-J4.12 (CDC §4.1) :
   `simulerPrime()` module la prime selon le Score Climat par paliers alignés sur
   `ScoreClimatModel.niveauFromScore` (mêmes bandes que partout ailleurs dans l'app) — aucune
@@ -531,6 +543,9 @@ Tests présents (`test/`) :
      sa toute première construction, pas sur un rebuild ultérieur avec un `initialValue`
      différent. Corrigé avec `key: ValueKey('nom-$nom')` (et pareil pour la région) sur ces
      deux champs, pour forcer Flutter à recréer le champ quand la valeur préremplie change.
+  Étendu en J5.14 : override de `formationViewModelProvider` ajouté (sans badge semé, donc sans
+  bonus) — `_submit()` lit désormais ce provider pour la règle 4.1, même raison que les
+  overrides Scoring/FinancementViewModel déjà en place.
 - `widgets/dashboard_screen_test.dart` (J2.21) — états vide (aucun score) et chargé (jauge +
   niveau + XP de formation) du point d'entrée après connexion, badge de notifications non
   lues, avertissement d'expiration de contrat d'assurance, résilience face à un état `error`
@@ -549,6 +564,11 @@ Tests présents (`test/`) :
   bouton "Nouvelle demande" masqué, action "Simuler" désactivée sans effet au tap) et score ≥ 60
   (message "Éligible au financement", bouton présent) ; cas `currentScore == null` traité comme
   0/100 (toujours verrouillé) ; état vide "Aucune demande". Aucun bug de production trouvé.
+  Étendu en J5.14 (règle 4.1) : le badge Assuré Climat ajoute +10 pts au score affiché et peut
+  faire franchir le seuil d'éligibilité — même piège que `dashboard_screen_test.dart` ci-dessus
+  (2) : `initState()` appelle `loadCourses()`, qui écraserait un état de badges injecté
+  directement sur `vm.state` — le badge est donc semé sur le `FakeFirebaseFirestore` sous-jacent
+  avant `pumpWidget`, pas assigné à la main.
 - `widgets/profil_screen_test.dart` (J3.6) — rend la portabilité des données accessible depuis
   l'écran Profil : présence du bouton « Télécharger mes données », ouverture du choix de
   format (PDF/CSV) au tap, appel de `exportAsCsv()`/`exportAsPdf()` avec le bon `userId` selon
@@ -862,7 +882,7 @@ seulement en local) :
 > niveau repository, comme documenté en §7, plutôt que d'introduire un nouveau précédent de
 > test isolé).
 
-> **Phase 5 — Messagerie & badges certifiés (J5.1-J5.12 terminées) : messagerie liée à une
+> **Phase 5 — Messagerie & badges certifiés (J5.1-J5.15 terminées) : messagerie liée à une
 > demande de financement, bout en bout, et émission de badges certifiés.** `MessageModel` +
 > sous-collection
 > `demandes_financement/{id}/messages` (J5.1), `MessagerieRepository` (J5.2 — envoi de message,
@@ -912,6 +932,23 @@ seulement en local) :
 > `BadgeModel.fromFirestore` lit exclusivement `date_obtention` (snake_case) — un badge délivré
 > par ce déclencheur s'affichait donc avec `isObtenu` toujours faux côté app, en silence.
 > Corrigé au passage.
+>
+> **Incitations croisées entre modules (J5.13-J5.15).** Badge « Assuré Climat » délivré à la
+> souscription d'une assurance (J5.13, CDC §3 M4) : déjà câblé dans
+> `AssuranceRepository.soumettreDossier()` avant cette tâche (héritage d'un travail antérieur à
+> la Phase 5) — comme il n'avait encore jamais de couverture de test directe, un test dédié a été
+> ajouté (`test/repositories/assurance_repository_test.dart`) pour le figer. Règle 4.1 (J5.14,
+> CDC §4.1) : le badge Assuré Climat bonifie de +10 pts (plafonné à 100) le score d'éligibilité
+> au financement — fonction pure `scoreEligibiliteFinancement()`
+> (`lib/utils/eligibilite_financement.dart`), même esprit que la règle symétrique côté prime
+> d'assurance (`_remiseScoreClimat`, J4.11-J4.12) : le Score Climat influence l'assurance, être
+> assuré influence en retour le financement. Appliquée à la fois à l'écran `FinancementScreen`
+> (verrou d'accès + mention « +10 pts grâce au badge Assuré Climat ») et au champ
+> `scoreEligibilite` stocké sur la demande à sa soumission (`DemandeFormScreen`). Badge
+> « Financé Vert » délivré à l'approbation d'une demande (J5.15, CDC §4.3) :
+> `CoursRepository.triggerFinanceVertBadge()`, branché dans `AdminViewModel.approuverDemande()`
+> juste après l'envoi de la notification d'approbation, même pattern idempotent
+> (`existing.exists`) que le badge Assuré Climat.
 
 **Fait**
 
@@ -933,16 +970,19 @@ seulement en local) :
 - **CI/CD GitHub Actions** : pipeline `analyze → test → build web / apk debug` sur chaque push
   + workflow de build APK release à la demande (§6ter)
 - Chaîne Android mise à niveau pour Flutter 3.47 (Gradle/AGP/Kotlin)
-- 183 tests `flutter test` répartis sur 4 catégories (détail complet §7) : ~99 tests unitaires
+- 195 tests `flutter test` répartis sur 4 catégories (détail complet §7) : ~103 tests unitaires
   de ViewModels (9 fichiers — Admin/Assurance/Auth/Financement/Formation/Messagerie/
-  Notification/Partenaire/Scoring), 10 widget tests (Login, ScoringForm, ScoreResult,
-  DemandeForm, Dashboard, Financement, Profil, CarteAlea, SimulateurAssurance,
-  MessageriePartenaire — validation, navigation par étapes, verrou de financement CDC §4.1,
-  connexion Google, export RGPD, rendu de carte, ciblage GPS, réduction de prime par score,
-  interface de chat (état vide, bulles par auteur, envoi), états d'erreur/chargement), des
-  tests de repositories/fonctions utilitaires purs ciblant directement le code métier sans
-  passer par un ViewModel (`ExportRepository`, `AuditRepository`, `AssuranceRepository`,
-  `MessagerieRepository`, `export_formatters.dart` — nouvelle catégorie depuis J3.4), et 3
+  Notification/Partenaire/Scoring, dont le badge Financé Vert à l'approbation, J5.15), 10 widget
+  tests (Login, ScoringForm, ScoreResult, DemandeForm, Dashboard, Financement, Profil, CarteAlea,
+  SimulateurAssurance, MessageriePartenaire — validation, navigation par étapes, verrou de
+  financement CDC §4.1 et son bonus du badge Assuré Climat (J5.14), connexion Google, export
+  RGPD, rendu de carte, ciblage GPS, réduction de prime par score, interface de chat (état vide,
+  bulles par auteur, envoi), états d'erreur/chargement), des tests de repositories/fonctions
+  utilitaires purs ciblant directement le code métier sans passer par un ViewModel
+  (`ExportRepository`, `AuditRepository`, `AssuranceRepository` — dont le badge Assuré Climat à
+  la souscription, J5.13 —, `CoursRepository` — badges Assuré Climat/Financé Vert, nouveau
+  fichier de test —, `MessagerieRepository`, `export_formatters.dart`,
+  `eligibilite_financement.dart` — règle 4.1, J5.14, nouvelle catégorie depuis J3.4), et 3
   scénarios d'intégration (RGPD export+suppression J3.9, carte→produit paramétrique T06 J4.14,
   conversation demandeur/partenaire J5.9) + smoke test du design system, exécutés en CI ; ont
   révélé et corrigé 3 bugs réels (débordement de layout, validation jamais déclenchée sur un

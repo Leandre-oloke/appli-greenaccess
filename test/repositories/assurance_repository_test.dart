@@ -103,4 +103,38 @@ void main() {
       expect(snapshot.docs.any((d) => d.id == 'sn-thies'), isTrue);
     });
   });
+
+  // ── Badge "Assuré Climat" à la souscription (J5.13) ─────────────────────
+  group('AssuranceRepository — soumettreDossier', () {
+    test('délivre le badge Assuré Climat au souscripteur', () async {
+      final db = FakeFirebaseFirestore();
+      final repo = AssuranceRepository(firestore: db);
+
+      final contrat = await repo.soumettreDossier({
+        'userId': 'alice',
+        'produit_id': 'prod-1',
+        'assureur_id': 'assureur-1',
+        'prime_mensuelle': 5000.0,
+        'zone_risque': 'sn-dakar',
+      });
+
+      expect(contrat.userId, 'alice');
+      final badgeSnap =
+          await db.collection('users').doc('alice').collection('badges').doc('assure_climat').get();
+      expect(badgeSnap.exists, isTrue);
+      expect(badgeSnap.data()?['type'], 'assurance');
+      expect(badgeSnap.data()?['date_obtention'], isNotNull);
+    });
+
+    test('une seconde souscription ne recrée pas le badge (idempotent)', () async {
+      final db = FakeFirebaseFirestore();
+      final repo = AssuranceRepository(firestore: db);
+
+      await repo.soumettreDossier({'userId': 'bob', 'produit_id': 'prod-1', 'assureur_id': 'a1'});
+      await repo.soumettreDossier({'userId': 'bob', 'produit_id': 'prod-2', 'assureur_id': 'a1'});
+
+      final badgesSnap = await db.collection('users').doc('bob').collection('badges').get();
+      expect(badgesSnap.docs, hasLength(1));
+    });
+  });
 }

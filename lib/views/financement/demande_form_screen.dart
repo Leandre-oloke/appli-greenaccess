@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/demande_financement_model.dart';
+import '../../utils/eligibilite_financement.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 import '../../viewmodels/financement_viewmodel.dart';
+import '../../viewmodels/formation_viewmodel.dart';
 import '../../viewmodels/scoring_viewmodel.dart';
 
 class DemandeFormScreen extends ConsumerStatefulWidget {
@@ -82,12 +84,19 @@ class _DemandeFormScreenState extends ConsumerState<DemandeFormScreen> {
       final uid = user?.id ?? '';
       if (uid.isNotEmpty) {
         ref.read(scoringViewModelProvider(uid).notifier).loadLatestScore();
+        ref.read(formationViewModelProvider(uid).notifier).loadCourses();
       }
     });
   }
 
   Future<void> _submit() async {
     final uid = ref.read(authViewModelProvider).user?.id ?? '';
+    // Règle 4.1 (CDC §4.1, J5.14) : le badge Assuré Climat bonifie de +10 pts
+    // le score d'éligibilité stocké sur la demande.
+    final aBadgeAssureClimat = ref
+        .read(formationViewModelProvider(uid))
+        .badges
+        .any((b) => b.id == badgeIdAssureClimat);
     final demande = DemandeFinancementModel(
       id: '',
       userId: uid,
@@ -98,7 +107,10 @@ class _DemandeFormScreenState extends ConsumerState<DemandeFormScreen> {
       pays: _pays,
       descriptionProjet: _description,
       statut: StatutDemande.soumis,
-      scoreEligibilite: ref.read(scoringViewModelProvider(uid)).currentScore?.scoreTotal ?? 0,
+      scoreEligibilite: scoreEligibiliteFinancement(
+        ref.read(scoringViewModelProvider(uid)).currentScore?.scoreTotal ?? 0,
+        aBadgeAssureClimat: aBadgeAssureClimat,
+      ),
       docsUrl: [],
       alignementTaxonomie: _uemoaCriteres.length >= 3 ? 'Conforme' : _uemoaCriteres.isNotEmpty ? 'Partiel' : 'NonConforme',
     );
