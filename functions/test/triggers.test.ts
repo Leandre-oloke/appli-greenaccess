@@ -25,6 +25,7 @@ import {
   MockWhatsAppChannel,
   NotificationService,
   defaultWhatsAppChannel,
+  MockOpenBadgeIssuer,
 } from "../src/index";
 
 const db = admin.firestore();
@@ -69,6 +70,12 @@ test("onCourseCompleted crée le badge défini par le cours quand il est déclen
   const badgeSnap = await db.collection("users").doc("alice").collection("badges").doc("badge-course1").get();
   assert.equal(badgeSnap.exists, true);
   assert.equal(badgeSnap.data()?.courseId, "course1");
+  // J5.11 : openbadge_url renseigné (émis par le BadgeIssuer, J5.10/J5.12),
+  // plus jamais codé en dur à null.
+  assert.equal(
+    badgeSnap.data()?.openbadge_url,
+    "https://badges.greenaccess.test/assertions/alice-badge-course1",
+  );
 });
 
 test("onCourseCompleted est idempotent : un deuxième déclenchement ne recrée pas le badge", async () => {
@@ -87,14 +94,16 @@ test("onCourseCompleted est idempotent : un deuxième déclenchement ne recrée 
   await wrappedOnCourseCompleted(change, context);
   const badgeRef = db.collection("users").doc("bob").collection("badges").doc("badge-course2");
   const firstSnap = await badgeRef.get();
-  const firstDate = firstSnap.data()?.dateObtention;
-  assert.ok(firstDate, "dateObtention doit être renseignée après le premier déclenchement");
+  // date_obtention (snake_case) — pas dateObtention, voir le commentaire du
+  // bug corrigé en tête de onCourseCompleted dans src/index.ts (J5.11-J5.12).
+  const firstDate = firstSnap.data()?.date_obtention;
+  assert.ok(firstDate, "date_obtention doit être renseignée après le premier déclenchement");
 
   // Deuxième déclenchement (ex. re-write du même document de progression) :
   // ne doit pas écraser le badge existant.
   await wrappedOnCourseCompleted(testEnv.makeChange(after_, after_), context);
   const secondSnap = await badgeRef.get();
-  assert.deepEqual(secondSnap.data()?.dateObtention, firstDate);
+  assert.deepEqual(secondSnap.data()?.date_obtention, firstDate);
 });
 
 test("onCourseCompleted ne crée aucun badge si le cours n'en définit pas", async () => {
@@ -127,6 +136,59 @@ test("onCourseCompleted ne fait rien si le cours n'est pas terminé", async () =
 
   const badgeSnap = await db.collection("users").doc("dave").collection("badges").doc("badge-course4").get();
   assert.equal(badgeSnap.exists, false);
+});
+
+// ── J5.10-J5.12 — émission de badges OpenBadge v2, branchée sur onCourseCompleted ──
+
+test("MockOpenBadgeIssuer.issueBadge émet une assertion OpenBadge v2 valide et trace l'émission", async () => {
+  const issuer = new MockOpenBadgeIssuer();
+
+  const { url, assertion } = await issuer.issueBadge({
+    userId: "alice", badgeId: "badge-x", badgeName: "Badge X",
+  });
+
+  assert.equal(url, "https://badges.greenaccess.test/assertions/alice-badge-x");
+  assert.equal(assertion["@context"], "https://w3id.org/openbadges/v2");
+  assert.equal(assertion.type, "Assertion");
+  assert.equal(assertion.id, url);
+  assert.deepEqual(assertion.recipient, { type: "id", identity: "alice" });
+  assert.equal(assertion.badge, "https://badges.greenaccess.test/badgeclass/badge-x");
+  assert.equal(assertion.verification.type, "hosted");
+  assert.ok(!Number.isNaN(Date.parse(assertion.issuedOn)), "issuedOn doit être une date ISO 8601 valide");
+
+  assert.equal(issuer.issuedBadges.length, 1);
+  assert.equal(issuer.issuedBadges[0].userId, "alice");
+  assert.equal(issuer.issuedBadges[0].badgeId, "badge-x");
+});
+
+test("MockOpenBadgeIssuer.issueBadge ne fait aucun appel réseau (deux émissions restent indépendantes)", async () => {
+  const issuer = new MockOpenBadgeIssuer();
+
+  await issuer.issueBadge({ userId: "alice", badgeId: "b1", badgeName: "B1" });
+  await issuer.issueBadge({ userId: "bob", badgeId: "b2", badgeName: "B2" });
+
+  assert.equal(issuer.issuedBadges.length, 2);
+  assert.notEqual(issuer.issuedBadges[0].assertion.id, issuer.issuedBadges[1].assertion.id);
+});
+
+test("onCourseCompleted stocke l'URL OpenBadge émise dans openbadge_url (J5.11-J5.12)", async () => {
+  await db.collection("courses").doc("course5").set({ badge_id: "badge-course5", titre: "Cours 5" });
+
+  const after_ = testEnv.firestore.makeDocumentSnapshot(
+    { statut: "TERMINE", badge_declenche: true, score_quiz: 75 },
+    "users/erin/progress/course5",
+  );
+  await wrappedOnCourseCompleted(
+    testEnv.makeChange(testEnv.firestore.makeDocumentSnapshot({}, "users/erin/progress/course5"), after_),
+    { params: { userId: "erin", courseId: "course5" } },
+  );
+
+  const badgeSnap = await db.collection("users").doc("erin").collection("badges").doc("badge-course5").get();
+  assert.equal(
+    badgeSnap.data()?.openbadge_url,
+    "https://badges.greenaccess.test/assertions/erin-badge-course5",
+  );
+  assert.ok(badgeSnap.data()?.date_obtention);
 });
 
 // ── J2.14 — onDemandeSubmitted : notification aux partenaires financeurs ───

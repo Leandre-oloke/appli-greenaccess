@@ -199,6 +199,60 @@ export const calculerScoreClimat = functions
     return { scoreId: docRef.id, scoreTotal, criteres: criteresDoc, niveau, suggestions };
   });
 
+// ── Émission de badges OpenBadge (J5.10, CDC §2.3) ───────────────────────────
+
+// Assertion OpenBadge v2 minimale (https://www.imsglobal.org/spec/ob/v2p0) —
+// suffisante pour être vérifiable/affichable ; les champs optionnels
+// (evidence, expires, image embarquée) restent hors du périmètre de cette
+// tâche.
+export interface OpenBadgeAssertion {
+  "@context": "https://w3id.org/openbadges/v2";
+  type: "Assertion";
+  id: string;
+  recipient: { type: "id"; identity: string };
+  badge: string;
+  issuedOn: string;
+  verification: { type: "hosted" };
+}
+
+export interface BadgeIssuer {
+  issueBadge(params: {
+    userId: string;
+    badgeId: string;
+    badgeName: string;
+  }): Promise<{ url: string; assertion: OpenBadgeAssertion }>;
+}
+
+// Mock tracé, sans appel réseau réel — utilisé tant que le compte OpenBadge
+// Factory (ou Badgr) n'est pas approvisionné. `issuedBadges` rend chaque
+// émission vérifiable en test, comme `MockWhatsAppChannel.sentMessages`.
+export class MockOpenBadgeIssuer implements BadgeIssuer {
+  readonly issuedBadges: { userId: string; badgeId: string; assertion: OpenBadgeAssertion }[] = [];
+
+  async issueBadge(params: {
+    userId: string;
+    badgeId: string;
+    badgeName: string;
+  }): Promise<{ url: string; assertion: OpenBadgeAssertion }> {
+    const { userId, badgeId } = params;
+    const url = `https://badges.greenaccess.test/assertions/${userId}-${badgeId}`;
+    const assertion: OpenBadgeAssertion = {
+      "@context": "https://w3id.org/openbadges/v2",
+      type: "Assertion",
+      id: url,
+      recipient: { type: "id", identity: userId },
+      badge: `https://badges.greenaccess.test/badgeclass/${badgeId}`,
+      issuedOn: new Date().toISOString(),
+      verification: { type: "hosted" },
+    };
+    this.issuedBadges.push({ userId, badgeId, assertion });
+    functions.logger.info(`[MockOpenBadgeIssuer] Badge ${badgeId} émis pour ${userId} → ${url}`);
+    return { url, assertion };
+  }
+}
+
+export const defaultBadgeIssuer: BadgeIssuer = new MockOpenBadgeIssuer();
+
 // ── Cloud Function : onCourseCompleted ───────────────────────────────────────
 
 export const onCourseCompleted = functions
@@ -220,14 +274,31 @@ export const onCourseCompleted = functions
       const badgeRef = db.collection("users").doc(userId).collection("badges").doc(course.badge_id);
       const badgeSnap = await badgeRef.get();
       if (!badgeSnap.exists) {
-        await badgeRef.set({
-          dateObtention: admin.firestore.FieldValue.serverTimestamp(),
-          courseId,
-          openbadge_url: null,
+        // J5.10-J5.12 : émission OpenBadge (assertion v2 + URL, J5.10),
+        // conservée dans openbadge_url (J5.11) plutôt que codée en dur à
+        // `null` comme avant le branchement du BadgeIssuer sur ce
+        // déclencheur (J5.12).
+        const { url } = await defaultBadgeIssuer.issueBadge({
+          userId,
+          badgeId: course.badge_id,
+          badgeName: course.titre ?? course.badge_id,
         });
 
-        // TODO: appel OpenBadge Factory API pour émettre le badge certifié
-        functions.logger.info(`Badge ${course.badge_id} déclenché pour ${userId}`);
+        // `date_obtention` (snake_case) — le champ était écrit en
+        // `dateObtention` (camelCase) avant cette tâche, alors que
+        // `BadgeModel.fromFirestore` (lib/models/badge_model.dart) lit
+        // exclusivement `date_obtention` : un badge délivré par ce
+        // déclencheur s'affichait donc avec `dateObtention: null` côté app
+        // (`BadgeModel.isObtenu` toujours faux), en silence. Corrigé au
+        // passage, dans le même esprit que le bug partenaire_id/partenaireId
+        // de J5.5.
+        await badgeRef.set({
+          date_obtention: admin.firestore.FieldValue.serverTimestamp(),
+          courseId,
+          openbadge_url: url,
+        });
+
+        functions.logger.info(`Badge ${course.badge_id} déclenché pour ${userId}.`);
       }
     }
   });

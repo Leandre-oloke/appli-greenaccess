@@ -320,7 +320,10 @@ Le job `integration` (`ci.yml`) exécute trois suites :
    `MockWhatsAppChannel` et `NotificationService.sendBestEffort()` (J5.7-J5.8, canal de secours
    WhatsApp mocké + sélection automatique FCM→WhatsApp, `sendFcm` injectable pour rester
    testable sans jamais toucher le vrai `admin.messaging()`, même fichier),
-   `checkAlertesClimatiques` (seuils sécheresse/inondation/chaleur + appel Open-Meteo mocké,
+   `MockOpenBadgeIssuer` (J5.10-J5.12 — assertion OpenBadge v2 + URL, tracée dans
+   `issuedBadges`, branchée sur `onCourseCompleted` qui stocke désormais l'URL réelle dans
+   `openbadge_url` au lieu de `null`, même fichier), `checkAlertesClimatiques` (seuils
+   sécheresse/inondation/chaleur + appel Open-Meteo mocké,
    `functions/test/checkAlertesClimatiques.test.ts`).
 3. `firebase emulators:exec --only firestore` (Java 21 requis) exécute `firestore-tests/`
    (Node.js, `@firebase/rules-unit-testing`, 34 tests) : isolation des documents
@@ -859,8 +862,9 @@ seulement en local) :
 > niveau repository, comme documenté en §7, plutôt que d'introduire un nouveau précédent de
 > test isolé).
 
-> **Phase 5 — Messagerie & badges certifiés (J5.1-J5.9 terminées) : messagerie liée à une
-> demande de financement, bout en bout.** `MessageModel` + sous-collection
+> **Phase 5 — Messagerie & badges certifiés (J5.1-J5.12 terminées) : messagerie liée à une
+> demande de financement, bout en bout, et émission de badges certifiés.** `MessageModel` +
+> sous-collection
 > `demandes_financement/{id}/messages` (J5.1), `MessagerieRepository` (J5.2 — envoi de message,
 > flux temps réel via `streamMessages()`), `MessagerieViewModel` (J5.3 — s'abonne au flux dès
 > sa création, comme `NotificationViewModel`), `MessageriePartenaireScreen` (J5.4 — interface de
@@ -892,6 +896,22 @@ seulement en local) :
 > J5.5) ; le volet « flux » est validé côté Flutter par un scénario bout en bout — demandeur et
 > partenaire échangent plusieurs messages via les vraies classes `MessagerieRepository`/
 > `MessagerieViewModel`, ordre et auteur de chaque message vérifiés.
+>
+> **Badges certifiés OpenBadge (J5.10-J5.12, CDC §2.3 · §3 M1 · T02).** `BadgeIssuer`
+> (interface) + `MockOpenBadgeIssuer` (J5.10) : émet une assertion
+> [OpenBadge v2](https://www.imsglobal.org/spec/ob/v2p0) minimale (`@context`, `type`,
+> `recipient`, `badge`, `issuedOn`, `verification`) et une URL d'assertion, sans appel réseau
+> réel en attendant l'approvisionnement d'un compte OpenBadge Factory/Badgr — chaque émission
+> tracée dans `issuedBadges`, même pattern que `MockWhatsAppChannel`. Champ `openbadge_url`
+> renseigné dans `users/{id}/badges/{id}` (J5.11) — `BadgeModel` (`lib/models/badge_model.dart`)
+> exposait déjà ce champ côté client depuis sa création, il restait codé en dur à `null` côté
+> Cloud Function. Branché sur `onCourseCompleted` (J5.12) : un badge est désormais délivré avec
+> son assertion réelle (mock) plutôt qu'un simple document vide. En touchant ce déclencheur, un
+> deuxième bug de nommage de champ est apparu, de la même famille que `partenaire_id`/
+> `partenaireId` (J5.5) : le badge était écrit avec `dateObtention` (camelCase) alors que
+> `BadgeModel.fromFirestore` lit exclusivement `date_obtention` (snake_case) — un badge délivré
+> par ce déclencheur s'affichait donc avec `isObtenu` toujours faux côté app, en silence.
+> Corrigé au passage.
 
 **Fait**
 
@@ -937,12 +957,13 @@ seulement en local) :
   `audit_logs` en ajout seul et inviolable, messagerie de demande de financement en ajout
   seul réservée au propriétaire/admin/partenaire financeur spécifiquement assigné à la
   demande — assigné vs. non-assigné, J5.5) — voir §6ter
-- Tests des Cloud Functions (`functions/test/`, 40 tests), en CI — formule `calculerScoreClimat`
+- Tests des Cloud Functions (`functions/test/`, 43 tests), en CI — formule `calculerScoreClimat`
   (poids CDC exacts, bornes 0-100, arrondi, contrôle d'accès), triggers `onCourseCompleted`
-  (badge + idempotence), `onDemandeSubmitted` (ciblage partenaires financeurs),
-  `onMessageSent` (J5.6 — notification au destinataire d'un message), canal de secours
-  WhatsApp mocké + sélection automatique de canal FCM→WhatsApp (J5.7-J5.8) et
-  `checkAlertesClimatiques` (seuils sécheresse/inondation/chaleur, Open-Meteo mocké) ; a
+  (badge + idempotence + émission OpenBadge mockée, J5.10-J5.12), `onDemandeSubmitted`
+  (ciblage partenaires financeurs), `onMessageSent` (J5.6 — notification au destinataire d'un
+  message), canal de secours WhatsApp mocké + sélection automatique de canal FCM→WhatsApp
+  (J5.7-J5.8) et `checkAlertesClimatiques` (seuils sécheresse/inondation/chaleur, Open-Meteo
+  mocké) ; a
   révélé et corrigé un bug réel de borne basse manquante (score négatif possible avec une
   entrée hors plage)
 - Tests d'intégration Flutter écrits (`integration_test/`) pour AuthRepository,
