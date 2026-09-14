@@ -43,6 +43,7 @@ import 'views/admin/admin_users_screen.dart';
 import 'views/admin/admin_demandes_screen.dart';
 import 'views/admin/admin_analytics_screen.dart';
 import 'views/admin/admin_partenaires_screen.dart';
+import 'views/admin/admin_zones_alea_screen.dart';
 import 'views/admin/admin_settings_screen.dart';
 import 'views/notifications/notifications_screen.dart';
 
@@ -87,6 +88,7 @@ class AppRoutes {
   static const adminDemandes   = '/admin/demandes';
   static const adminContrats   = '/admin/contrats';
   static const adminPartenaires = '/admin/partenaires';
+  static const adminZonesAlea  = '/admin/zones-alea';
   static const adminAnalytics  = '/admin/analytics';
   static const adminSettings   = '/admin/settings';
   static const adminCourseNew  = '/admin/formations/new';
@@ -369,6 +371,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: AppRoutes.adminDemandes, pageBuilder: (_, s) => _fadePage(s, const AdminDemandesScreen())),
           GoRoute(path: AppRoutes.adminContrats,  pageBuilder: (_, s) => _fadePage(s, const AdminContratsScreen())),
           GoRoute(path: AppRoutes.adminPartenaires, pageBuilder: (_, s) => _fadePage(s, const AdminPartenairesScreen())),
+          GoRoute(path: AppRoutes.adminZonesAlea,  pageBuilder: (_, s) => _fadePage(s, const AdminZonesAleaScreen())),
           GoRoute(path: AppRoutes.adminAnalytics,  pageBuilder: (_, s) => _fadePage(s, const AdminAnalyticsScreen())),
           GoRoute(path: AppRoutes.adminSettings,   pageBuilder: (_, s) => _fadePage(s, const AdminSettingsScreen())),
         ],

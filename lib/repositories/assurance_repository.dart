@@ -96,6 +96,22 @@ class AssuranceRepository {
         .toList();
   }
 
+  /// Importe le jeu de données bundlé (`assets/data/zones_alea.json`) dans
+  /// Firestore (J4.15) — permet à un admin de peupler/rafraîchir `zones_alea`
+  /// sans redéploiement de l'app. Un seul batch pour les 16 zones.
+  Future<void> importDefaultZonesAlea() async {
+    final zones = await _loadZonesAleaFromAssets();
+    final batch = _firestore.batch();
+    for (final zone in zones) {
+      batch.set(_firestore.collection('zones_alea').doc(zone.id), zone.toFirestore());
+    }
+    await batch.commit();
+  }
+
+  Future<void> deleteZoneAlea(String id) async {
+    await _firestore.collection('zones_alea').doc(id).delete();
+  }
+
   /// Upload un document de souscription vers Firebase Storage.
   /// Retourne l'URL de téléchargement publique.
   Future<String> uploadDocument({

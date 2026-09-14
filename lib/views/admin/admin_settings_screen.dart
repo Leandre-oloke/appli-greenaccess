@@ -51,6 +51,9 @@ class AdminSettingsScreen extends ConsumerWidget {
               'Rôles, comptes, accès', () => context.go(AppRoutes.adminUsers)),
           _tile(Icons.assignment_outlined, 'Demandes de financement',
               'Examiner et approuver les dossiers', () => context.go(AppRoutes.adminDemandes)),
+          _tile(Icons.map_outlined, 'Zones d\'aléa climatique',
+              'Importer/gérer les zones de la carte des risques',
+              () => context.go(AppRoutes.adminZonesAlea)),
 
           const Divider(),
           const Padding(

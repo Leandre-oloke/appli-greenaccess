@@ -59,4 +59,48 @@ void main() {
       expect(zones.first.nom, 'Zone Firestore');
     });
   });
+
+  // ── Import/gestion admin (J4.15) ────────────────────────────────────────
+  group('AssuranceRepository — importDefaultZonesAlea / deleteZoneAlea', () {
+    test('importDefaultZonesAlea() écrit les 16 zones bundlées dans Firestore', () async {
+      final db = FakeFirebaseFirestore();
+      final repo = AssuranceRepository(firestore: db);
+
+      await repo.importDefaultZonesAlea();
+
+      final snapshot = await db.collection('zones_alea').get();
+      expect(snapshot.docs, hasLength(16));
+      final dakar = snapshot.docs.firstWhere((d) => d.id == 'sn-dakar');
+      expect(dakar.data()['nom'], 'Dakar');
+      expect(dakar.data()['pays'], 'Sénégal');
+
+      // Une fois importées, getZonesAlea() lit Firestore (plus de repli asset).
+      final zones = await repo.getZonesAlea();
+      expect(zones, hasLength(16));
+    });
+
+    test('un second import écrase proprement (pas de doublons)', () async {
+      final db = FakeFirebaseFirestore();
+      final repo = AssuranceRepository(firestore: db);
+
+      await repo.importDefaultZonesAlea();
+      await repo.importDefaultZonesAlea();
+
+      final snapshot = await db.collection('zones_alea').get();
+      expect(snapshot.docs, hasLength(16));
+    });
+
+    test('deleteZoneAlea() retire uniquement la zone visée', () async {
+      final db = FakeFirebaseFirestore();
+      final repo = AssuranceRepository(firestore: db);
+      await repo.importDefaultZonesAlea();
+
+      await repo.deleteZoneAlea('sn-dakar');
+
+      final snapshot = await db.collection('zones_alea').get();
+      expect(snapshot.docs, hasLength(15));
+      expect(snapshot.docs.any((d) => d.id == 'sn-dakar'), isFalse);
+      expect(snapshot.docs.any((d) => d.id == 'sn-thies'), isTrue);
+    });
+  });
 }

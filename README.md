@@ -18,7 +18,7 @@ L'app couvre 5 modules métier, plus un back-office admin.
 | **Financement** | Demande de micro-crédit vert, suivi du statut, échéancier de remboursement, paiement Mobile Money (Wave, Orange Money, MTN MoMo, Moov, Free), annuaire des partenaires financeurs | `financement`, `demande_form`, `statut_demande`, `remboursements`, `paiement`, `partenaires` |
 | **Assurance** | Fiches produits, simulateur de prime, souscription, gestion des contrats, déclaration de sinistre | `assurance`, `fiches_produit`, `simulateur_assurance`, `souscription`, `mes_contrats`, `sinistre_form` |
 | **Notifications** | Centre de notifications in-app + push FCM (bannière en premier plan, handler background) | `notifications` |
-| **Admin** | Tableau de bord, gestion des formations et leçons, utilisateurs, demandes de financement, contrats, partenaires, analytics, paramètres | `admin_dashboard`, `admin_formations`, `admin_lecons`, `admin_users`, `admin_demandes`, `admin_contrats`, `admin_partenaires`, `admin_analytics`, `admin_settings` |
+| **Admin** | Tableau de bord, gestion des formations et leçons, utilisateurs, demandes de financement, contrats, partenaires, zones d'aléa climatique, analytics, paramètres | `admin_dashboard`, `admin_formations`, `admin_lecons`, `admin_users`, `admin_demandes`, `admin_contrats`, `admin_partenaires`, `admin_zones_alea`, `admin_analytics`, `admin_settings` |
 
 **Rôles utilisateur** (`UserRole`) : `user`, `partenaireAssureur`, `partenaireFinanceur`, `admin`.
 Le routage applique une redirection selon l'état d'authentification et le rôle (les routes `/admin/**` sont réservées aux admins).
@@ -367,7 +367,10 @@ Tests présents (`test/`) :
   villes UEMOA demandées (Dakar, Thiès, Saint-Louis, Cotonou, Parakou) et l'absence de valeur
   par défaut silencieuse sur chaque champ (`typeAlea`/`niveauRisque` dans l'énumération
   attendue, coordonnées non nulles, rayon positif, `pays` — ajouté en J4.10 pour le ciblage GPS
-  du simulateur — parmi les 8 pays déjà gérés par l'app).
+  du simulateur — parmi les 8 pays déjà gérés par l'app). Étendu en J4.15 (import admin) :
+  `importDefaultZonesAlea()` écrit les 16 zones bundlées dans Firestore (avec `pays`), un
+  second import écrase proprement sans créer de doublons (upsert par `id`, pas d'ajout brut), et
+  `deleteZoneAlea()` retire uniquement la zone visée.
 - `repositories/audit_repository_test.dart` (J3.7-J3.8) — `AuditRepository.logAction()`/
   `fetchLogs()` (écriture des champs attendus, tri du plus récent au plus ancien), puis
   vérifie le branchement réel sur les 4 actions critiques listées par le CDC §6 :
@@ -523,7 +526,7 @@ Tests présents (`test/`) :
   `tester.ensureVisible()` avant le tap, plutôt que l'agrandissement de viewport utilisé pour
   le `SliverList` de `dashboard_screen_test.dart` (les deux pièges sont liés à la
   virtualisation/au défilement mais se corrigent différemment selon le type de scroll).
-- `widgets/carte_alea_screen_test.dart` (J4.4-J4.9) — carte OpenStreetMap (`flutter_map`),
+- `widgets/carte_alea_screen_test.dart` (J4.4-J4.13) — carte OpenStreetMap (`flutter_map`),
   marqueur + légende par type d'aléa, bouton de géolocalisation (accordée/refusée), feuille de
   produits d'assurance éligibles au tap sur une zone (J4.9 — produits listés et bouton
   « Simuler », ou état vide + lien « Voir tous les produits » quand aucun produit n'est
@@ -542,7 +545,20 @@ Tests présents (`test/`) :
   routeur réel dans ce test (même limite que les autres écrans de ce dossier). A révélé un vrai
   bug de production : la tuile d'action « Carte des aléas » sur `AssuranceScreen` pointait vers
   `AppRoutes.fichesProduit` (probablement un espace réservé le temps que l'écran carte
-  existe) — corrigée pour pointer vers la nouvelle route `AppRoutes.carteAlea`.
+  existe) — corrigée pour pointer vers la nouvelle route `AppRoutes.carteAlea`. Étendu en J4.13
+  (« couvrir le rendu de la carte ») avec des assertions dédiées sur `FlutterMap`/`TileLayer`/
+  `CircleLayer`/`MarkerLayer` — le rendu de la carte elle-même était déjà exercé indirectement
+  par les tests précédents, mais pas vérifié explicitement en tant que tel.
+- `integration/carte_alea_produit_parametrique_scenario_test.dart` (J4.14, CDC §7.1 · T06) —
+  parcours complet « zone à risque élevé sur la carte → produit paramétrique recommandé » :
+  repère une zone `niveau_risque: eleve` parmi les 16 zones bundlées, simule une prime pour
+  cette zone avec un Score Climat excellent, vérifie que le produit recommandé est bien
+  paramétrique (`indiceDeclencheur` contient « paramétrique », `type` correspond au type d'aléa
+  de la zone, `zonesEligibles` contient le pays de la zone) et que la prime obtenue est
+  inférieure à la même simulation sans score (relie explicitement T06 au facteur Score Climat
+  de J4.11-J4.12). Même limite que J3.9 : pas un `integration_test/` classique contre de vrais
+  émulateurs (bloqué dans ce Codespace, voir plus bas), mais les vraies classes métier
+  enchaînées dans l'ordre du parcours réel.
 - `widgets/simulateur_assurance_screen_test.dart` (J4.10-J4.12) — ciblage GPS automatique de la
   zone (pré-remplissage vers la zone la plus proche de la position détectée, badge « Détectée
   via votre position », mais **seulement si la permission de localisation est déjà accordée** —
@@ -768,7 +784,7 @@ seulement en local) :
 > le catalogue complet si aucun produit n'est éligible (attendu : `produits_assurance` n'a pas
 > encore d'outil d'administration pour être peuplée, voir §8 « Fait »).
 >
-> **Phase 4 — J4.10-J4.12 (dernier lot) : ciblage GPS du simulateur + Score Climat comme
+> **Phase 4 — J4.10-J4.12 : ciblage GPS du simulateur + Score Climat comme
 > facteur de prime (CDC §4.1).** J4.10 : `ZoneAleaModel` gagne un champ `pays` (aligné sur les
 > 8 pays déjà gérés par l'app) ; `SimulateurAssuranceScreen` détecte au chargement la zone la
 > plus proche de la position GPS et pré-remplit le champ « Zone géographique » — **seulement
@@ -782,6 +798,23 @@ seulement en local) :
 > absent. `SimulateurAssuranceScreen` lit le score courant via `scoringViewModelProvider` et
 > l'affiche comme une ligne « Réduction Score Climat » dédiée dans le résultat
 > (`SimulationAssuranceResult.remiseScorePct`), pas seulement noyé dans le texte libre.
+
+> **Phase 4 — J4.13-J4.15 (dernier lot) : couverture de test du rendu de la carte, scénario T06
+> de bout en bout, et gestion admin des zones. Phase 4 terminée.** J4.13 : assertions dédiées
+> sur `FlutterMap`/`TileLayer`/`CircleLayer`/`MarkerLayer` dans les tests existants — le rendu
+> de la carte elle-même est désormais vérifié explicitement, pas seulement son contenu. J4.14 :
+> scénario d'intégration T06 (§7.1) validant qu'une zone à risque élevé mène à un produit
+> paramétrique recommandé, prime réduite par le Score Climat — détail §7. J4.15 :
+> `AdminZonesAleaScreen` (`/admin/zones-alea`, accessible depuis Réglages admin → « Zones
+> d'aléa climatique ») liste les zones actuelles et propose un import en un clic du jeu de
+> données bundlé vers Firestore (`AssuranceRepository.importDefaultZonesAlea()`, upsert par
+> `id` — un admin peut désormais mettre à jour les zones sans redéploiement de l'app) ainsi que
+> la suppression d'une zone individuelle. Pas de formulaire d'édition/création manuelle
+> (au-delà du périmètre de cette tâche à 0,75 h) — seuls l'import en masse et la suppression
+> sont couverts, cohérent avec la priorité « Basse » et le fait qu'aucun autre écran admin de
+> ce dépôt n'est encore couvert par un widget test (la couverture pour cet écran reste donc au
+> niveau repository, comme documenté en §7, plutôt que d'introduire un nouveau précédent de
+> test isolé).
 
 **Fait**
 

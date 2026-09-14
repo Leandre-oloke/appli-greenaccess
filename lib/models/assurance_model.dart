@@ -183,4 +183,15 @@ class ZoneAleaModel {
   factory ZoneAleaModel.fromJson(Map<String, dynamic> json) {
     return ZoneAleaModel.fromFirestore(json, json['id'] ?? '');
   }
+
+  /// Écriture Firestore (J4.15 — import/gestion admin des zones).
+  Map<String, dynamic> toFirestore() => {
+        'nom': nom,
+        'pays': pays,
+        'type_alea': typeAlea,
+        'latitude': latitude,
+        'longitude': longitude,
+        'rayon': rayon,
+        'niveau_risque': niveauRisque,
+      };
 }

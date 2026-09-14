@@ -1,10 +1,11 @@
-// Test widget de CarteAleaScreen (J4.4-J4.9) : fond de carte OpenStreetMap,
+// Test widget de CarteAleaScreen (J4.4-J4.13) : fond de carte OpenStreetMap,
 // marqueurs/cercles de risque colorés par type d'aléa, position GPS de
 // l'utilisateur, feuille de produits d'assurance éligibles au tap sur une
 // zone — sans Firebase réel (voir README.md §7) ni accès réseau réel aux
 // tuiles OpenStreetMap (non nécessaire : ce test vérifie la structure du
 // widget, pas le rendu visuel des tuiles).
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
@@ -101,6 +102,13 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.text('Carte des aléas climatiques'), findsOneWidget);
+    // Couvre explicitement le rendu de la carte elle-même (J4.13), pas
+    // seulement son contenu (marqueurs/légende) : fond OpenStreetMap et les
+    // deux couches de superposition sont bien montés dans l'arbre.
+    expect(find.byType(FlutterMap), findsOneWidget);
+    expect(find.byType(TileLayer), findsOneWidget);
+    expect(find.byType(CircleLayer), findsOneWidget);
+    expect(find.byType(MarkerLayer), findsOneWidget);
     // Les marqueurs sont identifiés par le message unique de leur Tooltip
     // (« Ville — Type ») plutôt que par icône : la légende réutilise les
     // mêmes icônes que les marqueurs, et flutter_map peut dessiner plusieurs
