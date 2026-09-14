@@ -75,6 +75,16 @@ class _FakeAuthRepository extends AuthRepository {
   bool deleteAccountCalled = false;
   UserCredential? googleCredentialToReturn;
   Object? googleSignInError;
+  Object? verifyOtpError;
+
+  @override
+  Future<void> sendOtpSms(String phoneNumber) async {}
+
+  @override
+  Future<UserCredential> verifyOtpCode(String smsCode) async {
+    if (verifyOtpError != null) throw verifyOtpError!;
+    return credentialToReturn!;
+  }
 
   @override
   Future<UserCredential> signInWithEmail(String email, String password) async {
@@ -346,6 +356,70 @@ void main() {
       expect(state.isAuthenticated, isTrue);
       expect(state.user?.id, 'uid-recreated');
       expect(repo.savedProfile?.id, 'uid-recreated');
+    });
+  });
+
+  group('AuthViewModel — verifyOtp', () {
+    test('profil Firestore déjà existant : utilisé tel quel, aucun nouveau profil créé',
+        () async {
+      final existing = UserModel(
+        id: 'uid-otp-1',
+        nom: 'Déjà inscrit',
+        email: '',
+        telephone: '+221700000001',
+        pays: 'Sénégal',
+        region: '',
+        secteur: '',
+        dateInscription: DateTime(2024, 1, 1),
+        profilComplet: true,
+        role: UserRole.user,
+      );
+      final repo = _FakeAuthRepository()
+        ..credentialToReturn = _credentialFor('uid-otp-1')
+        ..currentUserQueue.add(existing);
+      final container = _makeContainer(repo);
+      addTearDown(container.dispose);
+
+      await container.read(authViewModelProvider.notifier).verifyOtp('123456');
+      final state = container.read(authViewModelProvider);
+
+      expect(state.isAuthenticated, isTrue);
+      expect(state.user, existing);
+      expect(repo.savedProfile, isNull, reason: 'profil existant : pas de ré-écriture');
+    });
+
+    // Bug réel trouvé en écrivant le scénario E2E T01 (J6.2) : sans ce repli,
+    // un nouvel inscrit par OTP se retrouvait avec isAuthenticated == true
+    // mais user == null pour toujours (DashboardScreen affiche alors un
+    // écran vide indéfiniment, faute de profil Firestore).
+    test('première connexion (aucun profil Firestore) : un profil minimal est créé',
+        () async {
+      final repo = _FakeAuthRepository()
+        ..credentialToReturn = _credentialFor('uid-otp-2')
+        ..currentUserQueue.add(null); // getCurrentUser() : aucun profil pour cet uid
+      final container = _makeContainer(repo);
+      addTearDown(container.dispose);
+
+      await container.read(authViewModelProvider.notifier).verifyOtp('123456');
+      final state = container.read(authViewModelProvider);
+
+      expect(state.isAuthenticated, isTrue);
+      expect(state.user, isNotNull);
+      expect(state.user?.id, 'uid-otp-2');
+      expect(state.user?.profilComplet, isFalse);
+      expect(repo.savedProfile?.id, 'uid-otp-2');
+    });
+
+    test('échec de vérification du code : erreur affichée, non authentifié', () async {
+      final repo = _FakeAuthRepository()..verifyOtpError = Exception('invalid-verification-code');
+      final container = _makeContainer(repo);
+      addTearDown(container.dispose);
+
+      await container.read(authViewModelProvider.notifier).verifyOtp('000000');
+      final state = container.read(authViewModelProvider);
+
+      expect(state.isAuthenticated, isFalse);
+      expect(state.error, isNotNull);
     });
   });
 

@@ -25,6 +25,14 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // Patrol E2E (J6.1, CDC §7.1) — minSdk 23 satisfait déjà le minimum
+        // 21 requis par le package.
+        testInstrumentationRunner = "pl.leancode.patrol.PatrolJUnitRunner"
+        testInstrumentationRunnerArguments["clearPackageData"] = "true"
+    }
+
+    testOptions {
+        execution = "ANDROIDX_TEST_ORCHESTRATOR"
     }
 
     buildTypes {
@@ -64,4 +72,10 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Patrol E2E (J6.1) — ANDROIDX_TEST_ORCHESTRATOR ci-dessus isole chaque
+    // test dans son propre process instrumenté.
+    androidTestUtil("androidx.test:orchestrator:1.5.1")
 }

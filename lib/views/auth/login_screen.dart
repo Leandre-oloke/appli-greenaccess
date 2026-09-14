@@ -178,6 +178,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               onPressed: _submitGoogle,
                             ),
                             const SizedBox(height: GaSpacing.xs),
+                            // Jusqu'ici l'écran OTPScreen (numéro de téléphone,
+                            // CDC §7.2 · T01) n'était accessible par aucun bouton
+                            // de l'app malgré sa route publique déjà déclarée
+                            // (routes.dart) — trouvé en écrivant le scénario E2E
+                            // T01 (J6.2), corrigé ici.
+                            GaSecondaryButton.outlined(
+                              label: 'Continuer avec un numéro de téléphone',
+                              icon: Icons.sms_outlined,
+                              expand: true,
+                              onPressed: () => context.push(AppRoutes.otp),
+                            ),
+                            const SizedBox(height: GaSpacing.xs),
                             GaSecondaryButton.ghost(
                               label: "Pas encore de compte ? S'inscrire",
                               expand: true,

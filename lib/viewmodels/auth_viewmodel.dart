@@ -198,12 +198,36 @@ class AuthViewModel extends StateNotifier<AuthState> {
   Future<void> verifyOtp(String smsCode) async {
     state = state.copyWith(isLoading: true);
     try {
-      await _repository.verifyOtpCode(smsCode);
-      final user = await _repository.getCurrentUser();
+      final credential = await _repository.verifyOtpCode(smsCode);
+      // Première connexion via OTP : aucun profil Firestore existant, comme
+      // pour _createProfileFromGoogle — sans ce repli, `user` reste `null`
+      // alors que `isAuthenticated` passe à `true` juste en dessous, et
+      // DashboardScreen (`if (user == null) return const SizedBox.shrink();`)
+      // reste indéfiniment vide pour tout nouvel inscrit par OTP (bug réel
+      // trouvé en écrivant le scénario E2E T01, J6.2).
+      var user = await _repository.getCurrentUser();
+      user ??= await _createProfileFromPhone(credential.user!);
       state = state.copyWith(user: user, isLoading: false, isAuthenticated: true);
     } catch (e) {
       state = state.copyWith(isLoading: false, error: _mapError(e));
     }
+  }
+
+  Future<UserModel> _createProfileFromPhone(User firebaseUser) async {
+    final profile = UserModel(
+      id: firebaseUser.uid,
+      nom: '',
+      email: firebaseUser.email ?? '',
+      telephone: firebaseUser.phoneNumber ?? '',
+      pays: '',
+      region: '',
+      secteur: '',
+      dateInscription: DateTime.now(),
+      profilComplet: false,
+      role: UserRole.user,
+    );
+    await _repository.saveUserProfile(profile);
+    return profile;
   }
 
   Future<void> signOut() async {

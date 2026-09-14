@@ -28,7 +28,14 @@ Future<void> _fcmBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: currentFirebaseOptions());
 }
 
-void main() async {
+// `Future<void>` (pas `void`) : un `void main() async` ne peut pas être
+// `await`é depuis l'extérieur (sémantique fire-and-forget du langage Dart)
+// — nécessaire pour que les tests E2E Patrol (patrol_test/, J6.1-J6.3)
+// puissent attendre la fin réelle du bootstrap (Firebase, émulateurs,
+// SharedPreferences) avant d'interagir avec l'app. Aucun changement de
+// comportement en production : le moteur Flutter n'attend jamais `main()`
+// non plus.
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (kDebugMode) Animate.restartOnHotReload = true;
   await initializeDateFormatting('fr', null);

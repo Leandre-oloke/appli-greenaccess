@@ -166,7 +166,13 @@ void main() {
     // Le bouton est désactivé pendant le chargement (onPressed: null).
     final button = tester.widget<FilledButton>(find.byType(FilledButton));
     expect(button.onPressed, isNull);
-    final googleButton = tester.widget<OutlinedButton>(find.byType(OutlinedButton));
+    // find.byType(OutlinedButton) est ambigu depuis l'ajout du bouton « numéro
+    // de téléphone » (J6.2) — même style GaSecondaryButton.outlined que le
+    // bouton Google. Ciblé ici par position (.first, Google est le premier
+    // dans l'arbre) plutôt que par texte : pendant le chargement, le label
+    // « Continuer avec Google » est remplacé par son propre spinner et
+    // n'existe donc plus (voir l'assertion juste au-dessus).
+    final googleButton = tester.widget<OutlinedButton>(find.byType(OutlinedButton).first);
     expect(googleButton.onPressed, isNull);
 
     await tester.tap(find.byType(FilledButton), warnIfMissed: false);
@@ -179,6 +185,20 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.widgetWithText(OutlinedButton, 'Continuer avec Google'), findsOneWidget);
+  });
+
+  testWidgets('affiche le bouton « Continuer avec un numéro de téléphone » (J6.2, entrée vers OTPScreen)',
+      (tester) async {
+    await tester.pumpWidget(_buildLogin((ref) => _FakeAuthViewModel()));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.widgetWithText(OutlinedButton, 'Continuer avec un numéro de téléphone'),
+      findsOneWidget,
+    );
+    // context.push(AppRoutes.otp) (go_router) n'est pas testable ici sans
+    // routeur réel — même limite documentée pour les autres écrans de ce
+    // dossier.
   });
 
   testWidgets('appelle signInWithGoogle() au tap sur « Continuer avec Google »', (tester) async {

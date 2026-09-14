@@ -78,6 +78,22 @@ dev_dependencies:
   fake_cloud_firestore: ^3.1.0
   geolocator_platform_interface: ^4.2.4 # fake GeolocatorPlatform pour CarteAleaScreen (Phase 4)
 
+  # E2E (J6.1, CDC §7.1) — Patrol, sur un émulateur Android réel (voir
+  # patrol_test/ et .github/workflows/e2e.yml). Nécessite `patrol_cli`
+  # (`flutter pub global activate patrol_cli`), absent de ce Codespace
+  # (aucun émulateur/adb disponible ici, voir README.md §7) — exécutable en
+  # CI (Android hardware-accelerated sur ubuntu-latest) et en local sur un
+  # poste avec Android Studio/un émulateur.
+  patrol: ^4.9.0
+  patrol_finders: ^3.6.0
+
+patrol:
+  app_name: GreenAccess
+  android:
+    package_name: com.greenaccess.greenaccess
+  ios:
+    bundle_id: com.greenaccess.greenaccess
+
 flutter:
   uses-material-design: true
   assets:

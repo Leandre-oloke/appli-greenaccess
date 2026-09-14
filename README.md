@@ -296,12 +296,13 @@ Android si besoin, mémoire Gradle plafonnée pour la RAM du Codespace, repli au
 
 ## 6ter. CI/CD (GitHub Actions)
 
-Deux workflows dans `.github/workflows/` (Java 17 ou 21 selon le job, cache pub + cache Gradle) :
+Trois workflows dans `.github/workflows/` (Java 17 ou 21 selon le job, cache pub + cache Gradle) :
 
 | Workflow | Déclencheur | Contenu |
 |---|---|---|
 | `ci.yml` | push sur toute branche + PR | `flutter analyze` → (`flutter test --coverage` ‖ `backend tests (functions + firestore rules)`, en parallèle après `analyze`) → (`build web` ‖ `build apk --debug`, en parallèle après `test`). Artefacts : `coverage-lcov`, `greenaccess-debug-apk` (7 jours). |
 | `build-apk.yml` | manuel (`workflow_dispatch`) ou push sur `feat/design-system-overhaul` | `flutter build apk --release --split-per-abi`. Artefact `greenaccess-apk` (arm64-v8a, armeabi-v7a, x86_64 séparés — l'arm64 tient sous 30 Mo pour une distribution directe). |
+| `e2e.yml` | manuel (`workflow_dispatch`) uniquement | E2E Patrol (J6.1-J6.3, CDC §7.1-§7.2) sur un **émulateur Android réel** (hardware-accelerated sur `ubuntu-latest`, `reactivecircus/android-emulator-runner`) contre le Firebase Emulator Suite démarré dans le même job (auth + firestore + storage — jamais le vrai projet). Volontairement non déclenché à chaque push : un run complet (boot d'émulateur Android inclus) prend 10-15 min, largement plus coûteux qu'un `flutter test` classique — voir §7 pour le détail des scénarios et §8 pour ce que leur écriture a révélé. |
 
 Le job `integration` (`ci.yml`) exécute trois suites :
 1. `npm --prefix functions test` — tests unitaires purs de `calculerScoreClimat`
@@ -468,6 +469,13 @@ Tests présents (`test/`) :
   l'inscription email), connexion déjà existante (profil réutilisé sans réécriture),
   annulation (sélecteur de compte fermé sans choix → pas d'erreur affichée, comportement
   standard des SDK Google), erreur mappée (`account-exists-with-different-credential`).
+  Étendu pour **J6.2** (`verifyOtp`) : profil déjà existant (réutilisé sans réécriture),
+  première connexion par OTP (aucun profil Firestore → profil minimal créé, `profilComplet:
+  false`, même pattern que la connexion Google), échec de vérification du code (erreur affichée,
+  non authentifié). Écrit après coup, en marge du scénario E2E T01 — a justement révélé que ce
+  chemin (première connexion par OTP) n'avait jusque-là aucune couverture directe, ce qui avait
+  laissé passer le bug documenté en §8 (`user` restant `null` indéfiniment malgré
+  `isAuthenticated: true`).
 - `viewmodels/financement_viewmodel_test.dart` (J2.24) — simulation d'éligibilité (secteur vert
   vs. non vert, fourchette de montant ±30 %, taux indicatif, organisme « Microfinance locale »
   seulement si montant < 10 M FCFA), soumission de demande (succès/échec), chargement des
@@ -525,6 +533,12 @@ Tests présents (`test/`) :
   boutons de connexion (email + Google) partagent le même `authState.isLoading` et affichent
   donc chacun leur spinner (`findsNWidgets(2)`, pas `findsOneWidget` comme avant l'ajout du
   bouton Google).
+  Étendu pour **J6.2** : présence du bouton « Continuer avec un numéro de téléphone » (nouvelle
+  entrée vers `OTPScreen`, jusque-là inaccessible depuis l'UI — voir §8). `find.byType(OutlinedButton)`
+  devient ambigu (Google **et** ce nouveau bouton partagent le même style
+  `GaSecondaryButton.outlined`) : le test de chargement existant est adapté pour cibler le
+  bouton Google par position (`.first`) plutôt que par texte, son label étant lui-même
+  remplacé par un spinner pendant le chargement.
 - `widgets/scoring_form_screen_test.dart` (J2.18) — navigation des 5 étapes du stepper
   (« Suivant »/« Retour »), conservation de la sélection au retour, contenu exact du
   payload soumis à `soumettreCriteres` (clés par défaut + certifications sélectionnées),
@@ -801,6 +815,60 @@ seulement en local) :
    l'émulateur Functions refuse (il exige une version exacte parmi 20/22/24). Corrigé en
    `"20"`.
 
+**Tests E2E** (`patrol_test/`, package [Patrol](https://patrol.leancode.co/), J6.1-J6.3, CDC
+§7.1-§7.2) :
+
+Contrairement à `integration_test/` ci-dessus (bloqué sur Chrome web), Patrol pilote un
+**émulateur Android réel** — exactement la piste de reprise notée plus haut
+(« basculer ce test précis sur un émulateur Android/iOS »). Non exécutable dans ce Codespace
+(aucun `adb`/émulateur Android disponible ici — `flutter devices` n'y liste que `Linux (desktop)`
+et `Chrome (web)`), mais exécutable en CI (`e2e.yml`, manuel, §6ter) sur un runner GitHub Actions
+`ubuntu-latest` avec virtualisation matérielle, et en local sur un poste avec Android
+Studio/un émulateur (`patrol test`).
+
+- `app_test.dart` (J6.1) — test de fumée : prouve que le harnais Patrol est opérationnel
+  (l'app démarre réellement — Firebase, émulateurs, routeur — jusqu'à l'écran de connexion),
+  indépendamment de la logique d'un scénario métier.
+- `t01_inscription_otp_test.dart` (J6.2, CDC §7.2 · T01) — inscription par numéro de téléphone
+  jusqu'au tableau de bord, chronométrée (< 3 s entre la saisie du dernier chiffre du code et
+  l'affichage du tableau de bord). Le code OTP n'est jamais un vrai SMS : récupéré via l'API
+  REST de test de l'Auth Emulator (`emulator/v1/projects/{id}/verificationCodes` — non
+  documentée publiquement mais stable, voir le code source de `firebase-tools`,
+  `src/emulator/auth/operations.ts`), voir `patrol_test/helpers/e2e_helpers.dart`.
+- `t04_score_insuffisant_test.dart` (J6.3, CDC §7.2 · T04) — un Score Climat < 60 bloque
+  l'accès au financement (`FinancementScreen` : pas de bouton « Nouvelle demande », message
+  « Score insuffisant ») et redirige vers la formation (`ScoreResultScreen`, bouton
+  « Améliorer via formation » → `AppRoutes.courseList`). Compte de test et Score Climat semés
+  directement via les vraies classes du repo (`AuthRepository.saveUserProfile`,
+  `ScoreRepository.saveScore`) plutôt que rejoués à travers le formulaire de scoring en 5
+  étapes — seule l'authentification (email/mot de passe) est pilotée depuis l'UI, l'inscription
+  et le calcul de score ayant chacun leur propre test dédié ailleurs.
+
+En écrivant J6.2 (T01), deux bugs réels de production sont apparus et ont été corrigés :
+
+1. **Écran mort.** Aucun bouton de l'app ne menait jamais à `OTPScreen`, alors que sa route
+   (`/otp`) était déjà déclarée comme publique dans `routes.dart` — un écran accessible
+   uniquement par navigation directe (deep link), jamais depuis l'interface. Corrigé en ajoutant
+   un bouton « Continuer avec un numéro de téléphone » sur `LoginScreen`.
+2. **Profil jamais créé.** `AuthViewModel.verifyOtp()` ne créait aucun profil Firestore pour un
+   nouvel utilisateur inscrit par OTP : `isAuthenticated` passait à `true` mais `user` restait
+   `null` indéfiniment, et `DashboardScreen`
+   (`if (user == null) return const SizedBox.shrink();`) restait vide pour toujours — un
+   nouvel inscrit par OTP n'avait absolument aucun moyen d'utiliser l'app. Corrigé en créant un
+   profil minimal à la première connexion (`_createProfileFromPhone`, même pattern que
+   `_createProfileFromGoogle` déjà en place pour la connexion Google), couvert par 3 nouveaux
+   tests dans `auth_viewmodel_test.dart`.
+
+Infrastructure native ajoutée pour Patrol (J6.1) : `pubspec.yaml` (`patrol`/`patrol_finders` +
+bloc `patrol:` — `app_name`, `android.package_name`, `ios.bundle_id`),
+`android/app/build.gradle.kts` (`testInstrumentationRunner`, `ANDROIDX_TEST_ORCHESTRATOR`),
+`android/app/src/debug/AndroidManifest.xml` (`usesCleartextTraffic` — l'app rejoint le Firebase
+Emulator Suite sur l'hôte du runner via `10.0.2.2` en HTTP, debug uniquement, jamais en
+release), et `lib/main.dart` (`void main()` → `Future<void> main()` : un `void main() async`
+ne peut pas être `await`é depuis l'extérieur — nécessaire pour que les tests attendent la fin
+réelle du bootstrap Firebase avant d'interagir avec l'app ; aucun changement de comportement en
+production).
+
 ---
 
 ## 8. État d'avancement
@@ -1003,6 +1071,18 @@ seulement en local) :
 > tests unitaires purs déjà écrits en J5.14 — garde-fou contre toute régression de cette
 > incitation croisée.
 
+> **Phase 6 — E2E, performance & livraison (démarrée) : J6.1-J6.3, infrastructure Patrol +
+> premiers scénarios E2E.** Patrol (J6.1, CDC §7.1) configuré et exécutable en CI sur un
+> émulateur Android réel (`e2e.yml`, manuel — §6ter) ; non exécutable dans ce Codespace (aucun
+> `adb`/émulateur disponible ici, voir §7). Scénario T01 (J6.2, CDC §7.2 · T01) : inscription
+> par OTP jusqu'au tableau de bord en moins de 3 s — a révélé et corrigé deux bugs réels : un
+> écran `OTPScreen` jusque-là inaccessible depuis l'interface (route publique déclarée, mais
+> aucun bouton n'y menait) et `AuthViewModel.verifyOtp()` qui ne créait jamais de profil
+> Firestore pour un nouvel inscrit par OTP (tableau de bord vide indéfiniment). Scénario T04
+> (J6.3, CDC §7.2 · T04) : score < 60 → accès au financement bloqué + redirection vers la
+> formation. Détail complet (bugs, infrastructure native Android ajoutée, limite Codespace) en
+> §7.
+
 **Fait**
 
 - Architecture MVVM + Riverpod + go_router en place, 5 modules métier câblés bout en bout
@@ -1023,14 +1103,16 @@ seulement en local) :
 - **CI/CD GitHub Actions** : pipeline `analyze → test → build web / apk debug` sur chaque push
   + workflow de build APK release à la demande (§6ter)
 - Chaîne Android mise à niveau pour Flutter 3.47 (Gradle/AGP/Kotlin)
-- 205 tests `flutter test` répartis sur 4 catégories (détail complet §7) : ~103 tests unitaires
+- 209 tests `flutter test` répartis sur 4 catégories (détail complet §7) : ~106 tests unitaires
   de ViewModels (9 fichiers — Admin/Assurance/Auth/Financement/Formation/Messagerie/
-  Notification/Partenaire/Scoring, dont le badge Financé Vert à l'approbation, J5.15), 11 widget
-  tests (Login, ScoringForm, ScoreResult, DemandeForm, Dashboard, Financement, Profil, CarteAlea,
-  SimulateurAssurance, MessageriePartenaire, Badges — validation, navigation par étapes, verrou
-  de financement CDC §4.1 et son bonus du badge Assuré Climat (J5.14), connexion Google, export
-  RGPD, rendu de carte, ciblage GPS, réduction de prime par score, interface de chat (état vide,
-  bulles par auteur, envoi), export de badges JSON/PDF (J5.16), états d'erreur/chargement), des
+  Notification/Partenaire/Scoring, dont le badge Financé Vert à l'approbation J5.15, et la
+  création de profil à la première connexion par OTP J6.2), 11 widget tests (Login, ScoringForm,
+  ScoreResult, DemandeForm, Dashboard, Financement, Profil, CarteAlea, SimulateurAssurance,
+  MessageriePartenaire, Badges — validation, navigation par étapes, verrou de financement CDC
+  §4.1 et son bonus du badge Assuré Climat (J5.14), connexion Google, entrée vers OTPScreen
+  (J6.2), export RGPD, rendu de carte, ciblage GPS, réduction de prime par score, interface de
+  chat (état vide, bulles par auteur, envoi), export de badges JSON/PDF (J5.16), états
+  d'erreur/chargement), des
   tests de repositories/fonctions utilitaires purs ciblant directement le code métier sans
   passer par un ViewModel (`ExportRepository`, `AuditRepository`, `AssuranceRepository` — dont
   le badge Assuré Climat à la souscription, J5.13 —, `CoursRepository` — badges Assuré
@@ -1086,9 +1168,11 @@ seulement en local) :
   code déjà en place) fonctionne réellement ; détail §5 « Connexion Google »
 - Créer un projet Firebase de dev distinct et y brancher `firebase_env.dart`
 - Retirer le calcul de score de secours côté client (`ScoreRepository`), non conforme au CDC
-- Débloquer l'exécution de `integration_test/` (Chrome non-headless + DevTools, ou
-  émulateur Android/iOS) — voir le diagnostic détaillé en §7
-- Couverture de tests à étendre : widgets, parcours E2E
+- Débloquer l'exécution de `integration_test/` (Chrome non-headless + DevTools) — voir le
+  diagnostic détaillé en §7 ; la piste « émulateur Android/iOS » qui y était notée est
+  désormais couverte séparément par les tests E2E Patrol (`patrol_test/`, J6.1-J6.3, §7),
+  mais les 4 fichiers `integration_test/` eux-mêmes (contre Chrome web) restent bloqués tels quels
+- Couverture de tests à étendre : widgets (parcours E2E désormais couverts, T01/T04 — §7)
 - Intégration réelle des API Mobile Money (actuellement flux applicatif)
 - `AuthRepository.deleteAccount()` laisse des données orphelines (`scores_climat`,
   `demandes_financement`, `paiements`, `contrats_assurance`, `sinistres`) — trouvé en marge de
