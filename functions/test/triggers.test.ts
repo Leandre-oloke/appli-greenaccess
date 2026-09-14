@@ -21,7 +21,10 @@ import {
   onDemandeSubmitted,
   getPartenaireFinanceurTokens,
   onMessageSent,
-  getDestinataireToken,
+  getDestinataireContact,
+  MockWhatsAppChannel,
+  NotificationService,
+  defaultWhatsAppChannel,
 } from "../src/index";
 
 const db = admin.firestore();
@@ -163,34 +166,98 @@ test("onDemandeSubmitted ne fait rien pour une demande encore en brouillon", asy
 
 // ── J5.6 — onMessageSent : notification FCM au destinataire d'un message ───
 
-test("getDestinataireToken renvoie le token du partenaire assigné quand l'auteur est le demandeur", async () => {
-  await db.collection("users").doc("financeur1").set({ role: "partenaireFinanceur", fcm_token: "tok-financeur-1" });
+test("getDestinataireContact renvoie le contact du partenaire assigné quand l'auteur est le demandeur", async () => {
+  await db.collection("users").doc("financeur1").set({
+    role: "partenaireFinanceur", fcm_token: "tok-financeur-1", telephone: "+221700000001",
+  });
 
-  const token = await getDestinataireToken("alice", "financeur1", "alice");
-  assert.equal(token, "tok-financeur-1");
+  const contact = await getDestinataireContact("alice", "financeur1", "alice");
+  assert.deepEqual(contact, { fcmToken: "tok-financeur-1", phoneNumber: "+221700000001" });
 });
 
-test("getDestinataireToken renvoie le token du demandeur quand l'auteur est le partenaire/admin", async () => {
+test("getDestinataireContact renvoie le contact du demandeur quand l'auteur est le partenaire/admin", async () => {
   await db.collection("users").doc("alice").set({ role: "user", fcm_token: "tok-alice" });
 
-  const token = await getDestinataireToken("alice", "financeur1", "financeur1");
-  assert.equal(token, "tok-alice");
+  const contact = await getDestinataireContact("alice", "financeur1", "financeur1");
+  assert.equal(contact.fcmToken, "tok-alice");
 });
 
-test("getDestinataireToken renvoie null si aucun partenaire n'est encore assigné", async () => {
-  const token = await getDestinataireToken("alice", undefined, "alice");
-  assert.equal(token, null);
+test("getDestinataireContact renvoie fcmToken/phoneNumber null si aucun partenaire n'est encore assigné", async () => {
+  const contact = await getDestinataireContact("alice", undefined, "alice");
+  assert.deepEqual(contact, { fcmToken: null, phoneNumber: null });
 });
 
-test("getDestinataireToken renvoie null si le destinataire n'a pas de token FCM", async () => {
-  await db.collection("users").doc("financeur2").set({ role: "partenaireFinanceur" }); // pas de token
+test("getDestinataireContact renvoie fcmToken/phoneNumber null si le destinataire n'a ni l'un ni l'autre", async () => {
+  await db.collection("users").doc("financeur2").set({ role: "partenaireFinanceur" }); // ni token ni téléphone
 
-  const token = await getDestinataireToken("alice", "financeur2", "alice");
-  assert.equal(token, null);
+  const contact = await getDestinataireContact("alice", "financeur2", "alice");
+  assert.deepEqual(contact, { fcmToken: null, phoneNumber: null });
+});
+
+// ── J5.7-J5.8 — canal de secours WhatsApp + sélection automatique de canal ──
+
+test("MockWhatsAppChannel trace chaque envoi sans appel réseau réel", async () => {
+  const channel = new MockWhatsAppChannel();
+  const envoye = await channel.sendMessage("+221700000009", "Bonjour");
+
+  assert.equal(envoye, true);
+  assert.deepEqual(channel.sentMessages, [{ phoneNumber: "+221700000009", message: "Bonjour" }]);
+});
+
+test("NotificationService.sendBestEffort utilise FCM quand un token est disponible", async () => {
+  const whatsapp = new MockWhatsAppChannel();
+  let fcmAppele = false;
+  const service = new NotificationService(whatsapp, async () => {
+    fcmAppele = true;
+  });
+
+  const canal = await service.sendBestEffort({
+    fcmToken: "tok-1", phoneNumber: "+221700000001", title: "Titre", body: "Corps",
+  });
+
+  assert.equal(canal, "fcm");
+  assert.equal(fcmAppele, true);
+  assert.deepEqual(whatsapp.sentMessages, []); // pas de repli, FCM a suffi
+});
+
+test("NotificationService.sendBestEffort se rabat sur WhatsApp si l'envoi FCM échoue", async () => {
+  const whatsapp = new MockWhatsAppChannel();
+  const service = new NotificationService(whatsapp, async () => {
+    throw new Error("FCM indisponible (zone à faible signal)");
+  });
+
+  const canal = await service.sendBestEffort({
+    fcmToken: "tok-1", phoneNumber: "+221700000001", title: "Titre", body: "Corps",
+  });
+
+  assert.equal(canal, "whatsapp");
+  assert.equal(whatsapp.sentMessages.length, 1);
+  assert.equal(whatsapp.sentMessages[0].phoneNumber, "+221700000001");
+});
+
+test("NotificationService.sendBestEffort utilise directement WhatsApp sans token FCM", async () => {
+  const whatsapp = new MockWhatsAppChannel();
+  const service = new NotificationService(whatsapp, async () => {
+    throw new Error("ne doit jamais être appelé");
+  });
+
+  const canal = await service.sendBestEffort({
+    fcmToken: null, phoneNumber: "+221700000001", title: "Titre", body: "Corps",
+  });
+
+  assert.equal(canal, "whatsapp");
+});
+
+test("NotificationService.sendBestEffort renvoie \"none\" sans token ni numéro de téléphone", async () => {
+  const service = new NotificationService(new MockWhatsAppChannel());
+
+  const canal = await service.sendBestEffort({ fcmToken: null, phoneNumber: null, title: "Titre", body: "Corps" });
+
+  assert.equal(canal, "none");
 });
 
 test("onMessageSent se déclenche sans erreur pour un nouveau message (aucun destinataire à notifier)", async () => {
-  await clearCollection("users"); // aucun token FCM → messaging() jamais appelé
+  await clearCollection("users"); // aucun token FCM ni téléphone → aucun canal appelé
   await db.collection("demandes_financement").doc("d3").set({ userId: "alice", statut: "soumis" });
   const snap = testEnv.firestore.makeDocumentSnapshot(
     { demande_id: "d3", auteur_id: "alice", auteur_nom: "Alice", contenu: "Bonjour" },
@@ -211,4 +278,20 @@ test("onMessageSent ne fait rien si la demande associée n'existe pas (aucune er
   await assert.doesNotReject(
     wrappedOnMessageSent(snap, { params: { demandeId: "inexistante", messageId: "m1" } }),
   );
+});
+
+test("onMessageSent se rabat sur le canal WhatsApp mocké quand le destinataire n'a qu'un numéro de téléphone", async () => {
+  await clearCollection("users");
+  defaultWhatsAppChannel.sentMessages.length = 0; // remet à zéro le canal partagé du module
+  await db.collection("demandes_financement").doc("d4").set({ userId: "alice", partenaire_id: "financeur3", statut: "soumis" });
+  await db.collection("users").doc("financeur3").set({ role: "partenaireFinanceur", telephone: "+221700000099" }); // pas de fcm_token
+  const snap = testEnv.firestore.makeDocumentSnapshot(
+    { demande_id: "d4", auteur_id: "alice", auteur_nom: "Alice", contenu: "Où en est ma demande ?" },
+    "demandes_financement/d4/messages/m1",
+  );
+
+  await wrappedOnMessageSent(snap, { params: { demandeId: "d4", messageId: "m1" } });
+
+  assert.equal(defaultWhatsAppChannel.sentMessages.length, 1);
+  assert.equal(defaultWhatsAppChannel.sentMessages[0].phoneNumber, "+221700000099");
 });

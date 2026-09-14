@@ -274,6 +274,89 @@ export const onDemandeSubmitted = functions
     functions.logger.info(`Demande ${context.params.demandeId} notifiée à ${tokens.length} partenaires.`);
   });
 
+// ── Canal de secours WhatsApp (J5.7, CDC §2.3) ───────────────────────────────
+
+// Interface abstraite : permet de brancher un vrai client WhatsApp Business
+// API plus tard sans toucher à NotificationService.sendBestEffort() (J5.8).
+export interface WhatsAppChannel {
+  sendMessage(phoneNumber: string, message: string): Promise<boolean>;
+}
+
+// Mock tracé, sans appel réseau réel — utilisé tant que le compte WhatsApp
+// Business API n'est pas approvisionné. `sentMessages` rend les envois
+// vérifiables en test.
+export class MockWhatsAppChannel implements WhatsAppChannel {
+  readonly sentMessages: { phoneNumber: string; message: string }[] = [];
+
+  async sendMessage(phoneNumber: string, message: string): Promise<boolean> {
+    this.sentMessages.push({ phoneNumber, message });
+    functions.logger.info(`[MockWhatsApp] → ${phoneNumber} : ${message}`);
+    return true;
+  }
+}
+
+// ── NotificationService : sélection automatique de canal (J5.8, CDC §2.3) ───
+
+// `sendFcm` est injectable pour rester testable : le namespace `admin`
+// importé en `import * as admin` est figé et non mockable (voir
+// checkAlertesClimatiques.test.ts et README.md §7), contrairement à une
+// fonction passée en paramètre de constructeur.
+export type FcmSender = (
+  token: string,
+  title: string,
+  body: string,
+  data?: Record<string, string>
+) => Promise<void>;
+
+const defaultFcmSender: FcmSender = async (token, title, body, data) => {
+  await admin.messaging().sendEachForMulticast({
+    tokens: [token],
+    notification: { title, body },
+    data,
+  });
+};
+
+// Garantit la délivrance d'une notification critique : tente FCM en premier,
+// puis se rabat sur WhatsApp (zone à faible signal, app pas toujours
+// joignable en push, cf. CDC §2.3) si FCM échoue ou si aucun token FCM n'est
+// disponible. "Best effort" : ne lève jamais, renvoie le canal effectivement
+// utilisé.
+export class NotificationService {
+  constructor(
+    private readonly whatsapp: WhatsAppChannel,
+    private readonly sendFcm: FcmSender = defaultFcmSender
+  ) {}
+
+  async sendBestEffort(params: {
+    fcmToken?: string | null;
+    phoneNumber?: string | null;
+    title: string;
+    body: string;
+    data?: Record<string, string>;
+  }): Promise<"fcm" | "whatsapp" | "none"> {
+    const { fcmToken, phoneNumber, title, body, data } = params;
+
+    if (fcmToken) {
+      try {
+        await this.sendFcm(fcmToken, title, body, data);
+        return "fcm";
+      } catch (e) {
+        functions.logger.warn(`FCM indisponible, repli WhatsApp : ${e}`);
+      }
+    }
+
+    if (phoneNumber) {
+      const envoye = await this.whatsapp.sendMessage(phoneNumber, `${title}\n${body}`);
+      if (envoye) return "whatsapp";
+    }
+
+    return "none";
+  }
+}
+
+export const defaultWhatsAppChannel = new MockWhatsAppChannel();
+const notificationService = new NotificationService(defaultWhatsAppChannel);
+
 // ── Cloud Function : onMessageSent ───────────────────────────────────────────
 
 // Extraite pour être testable indépendamment de admin.messaging() (même
@@ -282,16 +365,20 @@ export const onDemandeSubmitted = functions
 // notifie le partenaire financeur assigné à la demande (aucune notification
 // si aucun partenaire n'est encore assigné) ; sinon (l'auteur est le
 // partenaire ou un admin), on notifie le demandeur.
-export async function getDestinataireToken(
+export async function getDestinataireContact(
   demandeUserId: string,
   demandePartenaireId: string | undefined,
   auteurId: string
-): Promise<string | null> {
+): Promise<{ fcmToken: string | null; phoneNumber: string | null }> {
   const destinataireId = auteurId === demandeUserId ? demandePartenaireId : demandeUserId;
-  if (!destinataireId) return null;
+  if (!destinataireId) return { fcmToken: null, phoneNumber: null };
 
   const userSnap = await db.collection("users").doc(destinataireId).get();
-  return userSnap.data()?.fcm_token ?? null;
+  const data = userSnap.data();
+  return {
+    fcmToken: data?.fcm_token ?? null,
+    phoneNumber: data?.telephone ?? null,
+  };
 }
 
 export const onMessageSent = functions
@@ -308,22 +395,21 @@ export const onMessageSent = functions
     const demande = demandeSnap.data();
     if (!demande) return;
 
-    const token = await getDestinataireToken(demande.userId, demande.partenaire_id, message.auteur_id);
-    if (!token) {
+    const contact = await getDestinataireContact(demande.userId, demande.partenaire_id, message.auteur_id);
+    if (!contact.fcmToken && !contact.phoneNumber) {
       functions.logger.info(`Message ${context.params.messageId} : aucun destinataire à notifier.`);
       return;
     }
 
-    await admin.messaging().sendEachForMulticast({
-      tokens: [token],
-      notification: {
-        title: `Nouveau message de ${message.auteur_nom}`,
-        body: message.contenu,
-      },
+    const canal = await notificationService.sendBestEffort({
+      fcmToken: contact.fcmToken,
+      phoneNumber: contact.phoneNumber,
+      title: `Nouveau message de ${message.auteur_nom}`,
+      body: message.contenu,
       data: { demandeId: context.params.demandeId },
     });
 
-    functions.logger.info(`Message ${context.params.messageId} notifié.`);
+    functions.logger.info(`Message ${context.params.messageId} notifié via ${canal}.`);
   });
 
 // ── Cloud Function : onAlertClimatique (schedulée) ───────────────────────────

@@ -311,13 +311,16 @@ Le job `integration` (`ci.yml`) exécute trois suites :
 2. `npm --prefix functions run test:emulator` — tests des Cloud Functions qui font de
    vraies lectures/écritures Firestore : `onCourseCompleted` (badge déclenché + idempotence,
    `functions/test/triggers.test.ts`), `onDemandeSubmitted` (ciblage des partenaires
-   financeurs à notifier, même fichier), `onMessageSent` (J5.6 — notification FCM au
-   destinataire d'un nouveau message : `getDestinataireToken()` détermine « l'autre partie »
-   de la conversation — le partenaire assigné si l'auteur est le demandeur, le demandeur
-   sinon —, `null` si aucun partenaire n'est encore assigné ou si le destinataire n'a pas de
-   token FCM ; le déclencheur lui-même ne lève aucune erreur quand aucun token n'existe ou que
-   la demande associée a disparu, même fichier), `checkAlertesClimatiques` (seuils
-   sécheresse/inondation/chaleur + appel Open-Meteo mocké,
+   financeurs à notifier, même fichier), `onMessageSent` (J5.6 — notification au destinataire
+   d'un nouveau message : `getDestinataireContact()` détermine « l'autre partie » de la
+   conversation — le partenaire assigné si l'auteur est le demandeur, le demandeur sinon — et
+   son contact (token FCM + téléphone), `null`/`null` si aucun partenaire n'est encore assigné
+   ou si le destinataire n'a ni l'un ni l'autre ; le déclencheur lui-même ne lève aucune erreur
+   quand aucun canal n'est disponible ou que la demande associée a disparu, même fichier),
+   `MockWhatsAppChannel` et `NotificationService.sendBestEffort()` (J5.7-J5.8, canal de secours
+   WhatsApp mocké + sélection automatique FCM→WhatsApp, `sendFcm` injectable pour rester
+   testable sans jamais toucher le vrai `admin.messaging()`, même fichier),
+   `checkAlertesClimatiques` (seuils sécheresse/inondation/chaleur + appel Open-Meteo mocké,
    `functions/test/checkAlertesClimatiques.test.ts`).
 3. `firebase emulators:exec --only firestore` (Java 21 requis) exécute `firestore-tests/`
    (Node.js, `@firebase/rules-unit-testing`, 34 tests) : isolation des documents
@@ -598,6 +601,14 @@ Tests présents (`test/`) :
   champ de texte + bouton d'envoi (écriture Firestore vérifiée, champ vidé après envoi). Même
   stratégie de fake `AuthViewModel`/`fake_cloud_firestore` que les autres tests widgets de ce
   dossier.
+- `integration/messagerie_scenario_test.dart` (J5.9, CDC §7.1) — parcours complet de
+  conversation entre le demandeur et le partenaire financeur assigné à sa demande : plusieurs
+  messages échangés dans l'ordre via les vraies classes `MessagerieRepository`/
+  `MessagerieViewModel`, ordre et auteur de chaque message vérifiés via le flux temps réel. Le
+  volet « règles » du même scénario (accès réservé aux deux parties) est couvert séparément par
+  `firestore-tests/rules.test.mjs` (34 tests, dont les cas assigné/non-assigné de J5.5) —
+  `FakeFirebaseFirestore` n'applique aucune Security Rule, voir plus bas pour la même limite sur
+  les autres scénarios d'intégration de ce dossier.
 - `widget_test.dart` — smoke test du design system (`AppTheme` clair/sombre + composants `Ga*`
   se rendent sans exception). Ne boote **pas** `GreenAccessApp` en entier : dès son premier
   `build()`, l'app touche trois plugins Firebase réels (Auth, Firestore, Messaging) dont le
@@ -848,7 +859,7 @@ seulement en local) :
 > niveau repository, comme documenté en §7, plutôt que d'introduire un nouveau précédent de
 > test isolé).
 
-> **Phase 5 — Messagerie & badges certifiés (J5.1-J5.6 terminées) : messagerie liée à une
+> **Phase 5 — Messagerie & badges certifiés (J5.1-J5.9 terminées) : messagerie liée à une
 > demande de financement, bout en bout.** `MessageModel` + sous-collection
 > `demandes_financement/{id}/messages` (J5.1), `MessagerieRepository` (J5.2 — envoi de message,
 > flux temps réel via `streamMessages()`), `MessagerieViewModel` (J5.3 — s'abonne au flux dès
@@ -865,9 +876,22 @@ seulement en local) :
 > (assigné vs. non-assigné) — création impossible en usurpant l'identité d'un autre auteur,
 > modification/suppression toujours refusées une fois un message envoyé. Notification FCM au
 > destinataire (J5.6) : Cloud Function `onMessageSent`, helper testable
-> `getDestinataireToken()` détermine « l'autre partie » de la conversation (le partenaire
-> assigné si l'auteur est le demandeur, le demandeur sinon), aucune notification si aucun
-> partenaire n'est encore assigné ou si le destinataire n'a pas de token FCM.
+> `getDestinataireContact()` détermine « l'autre partie » de la conversation (le partenaire
+> assigné si l'auteur est le demandeur, le demandeur sinon) et son contact (token FCM + numéro
+> de téléphone), aucune notification si aucun partenaire n'est encore assigné ou si le
+> destinataire n'a ni l'un ni l'autre. Canal de secours WhatsApp (J5.7, CDC §2.3) :
+> `WhatsAppChannel` (interface) + `MockWhatsAppChannel` (trace chaque envoi, aucun appel réseau
+> réel, en attendant l'approvisionnement d'un compte WhatsApp Business API réel). Sélection
+> automatique de canal (J5.8) : `NotificationService.sendBestEffort()` tente FCM en premier,
+> se rabat sur WhatsApp si l'envoi échoue ou si aucun token FCM n'est disponible (zone à faible
+> signal) — jamais aucune notification levée en erreur, seulement le canal effectivement utilisé
+> renvoyé (`"fcm" | "whatsapp" | "none"`) ; câblé dans `onMessageSent`, qui journalise le canal
+> retenu. Test d'intégration messagerie (J5.9, CDC §7.1) : le volet « règles » (accès réservé au
+> propriétaire, à l'admin, au partenaire assigné) est validé contre le vrai moteur de règles
+> Firestore dans `firestore-tests/rules.test.mjs` (34 tests, dont les cas assigné/non-assigné de
+> J5.5) ; le volet « flux » est validé côté Flutter par un scénario bout en bout — demandeur et
+> partenaire échangent plusieurs messages via les vraies classes `MessagerieRepository`/
+> `MessagerieViewModel`, ordre et auteur de chaque message vérifiés.
 
 **Fait**
 
@@ -889,7 +913,7 @@ seulement en local) :
 - **CI/CD GitHub Actions** : pipeline `analyze → test → build web / apk debug` sur chaque push
   + workflow de build APK release à la demande (§6ter)
 - Chaîne Android mise à niveau pour Flutter 3.47 (Gradle/AGP/Kotlin)
-- 182 tests `flutter test` répartis sur 4 catégories (détail complet §7) : ~99 tests unitaires
+- 183 tests `flutter test` répartis sur 4 catégories (détail complet §7) : ~99 tests unitaires
   de ViewModels (9 fichiers — Admin/Assurance/Auth/Financement/Formation/Messagerie/
   Notification/Partenaire/Scoring), 10 widget tests (Login, ScoringForm, ScoreResult,
   DemandeForm, Dashboard, Financement, Profil, CarteAlea, SimulateurAssurance,
@@ -898,11 +922,11 @@ seulement en local) :
   interface de chat (état vide, bulles par auteur, envoi), états d'erreur/chargement), des
   tests de repositories/fonctions utilitaires purs ciblant directement le code métier sans
   passer par un ViewModel (`ExportRepository`, `AuditRepository`, `AssuranceRepository`,
-  `MessagerieRepository`, `export_formatters.dart` — nouvelle catégorie depuis J3.4), et 2
-  scénarios d'intégration (RGPD export+suppression J3.9, carte→produit paramétrique T06 J4.14)
-  + smoke test du design system, exécutés en CI ; ont révélé et corrigé 3 bugs réels
-  (débordement de layout, validation jamais déclenchée sur un stepper 7 étapes,
-  pré-remplissage de champ invisible à
+  `MessagerieRepository`, `export_formatters.dart` — nouvelle catégorie depuis J3.4), et 3
+  scénarios d'intégration (RGPD export+suppression J3.9, carte→produit paramétrique T06 J4.14,
+  conversation demandeur/partenaire J5.9) + smoke test du design system, exécutés en CI ; ont
+  révélé et corrigé 3 bugs réels (débordement de layout, validation jamais déclenchée sur un
+  stepper 7 étapes, pré-remplissage de champ invisible à
   l'écran)
 - Couverture de code lcov calculée et publiée en résumé de CI à chaque build (§6ter) — 26 %
   mesurés, sous la cible CDC §7.1 (45-55 %), écart noté pour prioriser les prochaines tâches
@@ -913,10 +937,11 @@ seulement en local) :
   `audit_logs` en ajout seul et inviolable, messagerie de demande de financement en ajout
   seul réservée au propriétaire/admin/partenaire financeur spécifiquement assigné à la
   demande — assigné vs. non-assigné, J5.5) — voir §6ter
-- Tests des Cloud Functions (`functions/test/`, 34 tests), en CI — formule `calculerScoreClimat`
+- Tests des Cloud Functions (`functions/test/`, 40 tests), en CI — formule `calculerScoreClimat`
   (poids CDC exacts, bornes 0-100, arrondi, contrôle d'accès), triggers `onCourseCompleted`
   (badge + idempotence), `onDemandeSubmitted` (ciblage partenaires financeurs),
-  `onMessageSent` (J5.6 — notification FCM au destinataire d'un message) et
+  `onMessageSent` (J5.6 — notification au destinataire d'un message), canal de secours
+  WhatsApp mocké + sélection automatique de canal FCM→WhatsApp (J5.7-J5.8) et
   `checkAlertesClimatiques` (seuils sécheresse/inondation/chaleur, Open-Meteo mocké) ; a
   révélé et corrigé un bug réel de borne basse manquante (score négatif possible avec une
   entrée hors plage)
