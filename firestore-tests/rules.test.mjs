@@ -298,7 +298,7 @@ test('seul un admin peut lire le journal d’audit', async () => {
   await assertSucceeds(admin.doc('audit_logs/log1').get());
 });
 
-// ── Messagerie liée à une demande de financement (J5.1-J5.2) ───────────────
+// ── Messagerie liée à une demande de financement (J5.1-J5.2, restreinte J5.5) ─
 
 test('le propriétaire d’une demande peut envoyer un message sur sa propre demande', async () => {
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
@@ -329,6 +329,42 @@ test('un autre utilisateur ne peut ni lire ni écrire les messages d’une deman
   await assertFails(
     bob.collection('demandes_financement/d1/messages').add({
       demande_id: 'd1', auteur_id: 'bob', auteur_nom: 'Bob', contenu: 'intrusion', created_at: new Date(),
+    }),
+  );
+});
+
+test('le partenaire financeur spécifiquement assigné à la demande peut lire et écrire les messages', async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().doc('demandes_financement/d1').set({
+      userId: 'alice', statut: 'soumis', partenaire_id: 'financeur1',
+    });
+  });
+  const financeur = testEnv.authenticatedContext('financeur1').firestore();
+  await assertSucceeds(financeur.doc('demandes_financement/d1').collection('messages').get());
+  await assertSucceeds(
+    financeur.collection('demandes_financement/d1/messages').add({
+      demande_id: 'd1', auteur_id: 'financeur1', auteur_nom: 'Financeur', contenu: 'Réponse', created_at: new Date(),
+    }),
+  );
+});
+
+test('un partenaire financeur NON assigné à cette demande précise ne peut ni lire ni écrire ses messages', async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await db.doc('demandes_financement/d1').set({ userId: 'alice', statut: 'soumis', partenaire_id: 'financeur1' });
+    await db.doc('demandes_financement/d1/messages/m1').set({
+      demande_id: 'd1', auteur_id: 'alice', auteur_nom: 'Alice', contenu: 'x', created_at: new Date(),
+    });
+  });
+  // financeur2 a bien le rôle partenaireFinanceur, mais n'est pas assigné à
+  // CETTE demande — c'est exactement la restriction ajoutée en J5.5 (avant,
+  // n'importe quel partenaireFinanceur pouvait accéder à n'importe quelle
+  // conversation, pas seulement les deux parties concernées).
+  const financeur2 = testEnv.authenticatedContext('financeur2').firestore();
+  await assertFails(financeur2.doc('demandes_financement/d1/messages/m1').get());
+  await assertFails(
+    financeur2.collection('demandes_financement/d1/messages').add({
+      demande_id: 'd1', auteur_id: 'financeur2', auteur_nom: 'Autre financeur', contenu: 'intrusion', created_at: new Date(),
     }),
   );
 });

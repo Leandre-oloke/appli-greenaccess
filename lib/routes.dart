@@ -20,6 +20,7 @@ import 'views/auth/splash_screen.dart';
 import 'views/dashboard/dashboard_screen.dart';
 import 'views/financement/demande_form_screen.dart';
 import 'views/financement/financement_screen.dart';
+import 'views/financement/messagerie_partenaire_screen.dart';
 import 'views/financement/partenaires_screen.dart';
 import 'views/financement/paiement_screen.dart';
 import 'views/financement/remboursements_screen.dart';
@@ -78,6 +79,7 @@ class AppRoutes {
   static String quizPath(String id)          => '/formation/$id/quiz';
   static String statutDemandePath(String id) => '/financement/statut/$id';
   static String remboursementsPath(String id) => '/financement/statut/$id/remboursements';
+  static String messagerieDemandePath(String id) => '/financement/statut/$id/messages';
   static String paiementPath(String demandeId, String echeanceId) =>
       '/financement/statut/$demandeId/remboursements/$echeanceId/payer';
 
@@ -235,6 +237,13 @@ final routerProvider = Provider<GoRouter>((ref) {
                     StatutDemandeScreen(demandeId: s.pathParameters['demandeId']!),
                   ),
                   routes: [
+                    GoRoute(
+                      path: 'messages',
+                      pageBuilder: (_, s) => _fadePage(
+                        s,
+                        MessageriePartenaireScreen(demandeId: s.pathParameters['demandeId']!),
+                      ),
+                    ),
                     GoRoute(
                       path: 'remboursements',
                       pageBuilder: (_, s) => _fadePage(

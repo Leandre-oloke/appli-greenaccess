@@ -119,16 +119,21 @@ service cloud.firestore {
                      || (isAuth() && get(/databases/$(database)/documents/demandes_financement/$(demandeId)).data.userId == request.auth.uid);
       }
 
-      // Sous-collection messages (J5.1-J5.2) — fil de discussion entre
-      // l'emprunteur, l'admin et le partenaire financeur sur cette demande.
-      // Ajout seul : un message envoyé n'est ni modifié ni supprimé.
+      // Sous-collection messages (J5.1-J5.2, restreinte en J5.5) — fil de
+      // discussion réservé aux deux parties de CETTE demande précise :
+      // l'emprunteur et le partenaire financeur qui lui est spécifiquement
+      // assigné (`partenaire_id`) — pas n'importe quel compte
+      // partenaireFinanceur, contrairement à la version initiale de J5.1-J5.2
+      // (isPartenaireFinanceur() sans vérifier l'assignation). Un admin garde
+      // un accès de supervision, comme sur le reste de l'app. Ajout seul : un
+      // message envoyé n'est ni modifié ni supprimé.
       match /messages/{messageId} {
         allow read: if isAdmin()
-                    || isPartenaireFinanceur()
-                    || (isAuth() && get(/databases/$(database)/documents/demandes_financement/$(demandeId)).data.userId == request.auth.uid);
+                    || (isAuth() && get(/databases/$(database)/documents/demandes_financement/$(demandeId)).data.userId == request.auth.uid)
+                    || (isAuth() && get(/databases/$(database)/documents/demandes_financement/$(demandeId)).data.partenaire_id == request.auth.uid);
         allow create: if (isAdmin()
-                      || isPartenaireFinanceur()
-                      || (isAuth() && get(/databases/$(database)/documents/demandes_financement/$(demandeId)).data.userId == request.auth.uid))
+                      || (isAuth() && get(/databases/$(database)/documents/demandes_financement/$(demandeId)).data.userId == request.auth.uid)
+                      || (isAuth() && get(/databases/$(database)/documents/demandes_financement/$(demandeId)).data.partenaire_id == request.auth.uid))
                       && request.resource.data.auteur_id == request.auth.uid;
         allow update, delete: if false;
       }

@@ -38,7 +38,16 @@ class _StatutDemandeScreenState extends ConsumerState<StatutDemandeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Statut de la demande')),
+      appBar: AppBar(
+        title: const Text('Statut de la demande'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.chat_bubble_outline),
+            tooltip: 'Messagerie',
+            onPressed: () => context.push(AppRoutes.messagerieDemandePath(widget.demandeId)),
+          ),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _demande == null

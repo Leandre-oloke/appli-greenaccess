@@ -311,11 +311,16 @@ Le job `integration` (`ci.yml`) exécute trois suites :
 2. `npm --prefix functions run test:emulator` — tests des Cloud Functions qui font de
    vraies lectures/écritures Firestore : `onCourseCompleted` (badge déclenché + idempotence,
    `functions/test/triggers.test.ts`), `onDemandeSubmitted` (ciblage des partenaires
-   financeurs à notifier, même fichier), `checkAlertesClimatiques` (seuils
+   financeurs à notifier, même fichier), `onMessageSent` (J5.6 — notification FCM au
+   destinataire d'un nouveau message : `getDestinataireToken()` détermine « l'autre partie »
+   de la conversation — le partenaire assigné si l'auteur est le demandeur, le demandeur
+   sinon —, `null` si aucun partenaire n'est encore assigné ou si le destinataire n'a pas de
+   token FCM ; le déclencheur lui-même ne lève aucune erreur quand aucun token n'existe ou que
+   la demande associée a disparu, même fichier), `checkAlertesClimatiques` (seuils
    sécheresse/inondation/chaleur + appel Open-Meteo mocké,
    `functions/test/checkAlertesClimatiques.test.ts`).
 3. `firebase emulators:exec --only firestore` (Java 21 requis) exécute `firestore-tests/`
-   (Node.js, `@firebase/rules-unit-testing`, 32 tests) : isolation des documents
+   (Node.js, `@firebase/rules-unit-testing`, 34 tests) : isolation des documents
    `users/{uid}`, interdiction de s'auto-promouvoir `role: admin` (à la création comme à la
    mise à jour), cloisonnement par propriétaire de `scores_climat`, `demandes_financement`
    (+ sous-collections `remboursements` et `messages`), `contrats_assurance`, `sinistres` et
@@ -324,10 +329,13 @@ Le job `integration` (`ci.yml`) exécute trois suites :
    notifications globales, le journal d'audit `audit_logs` (J3.7) : création réservée à sa
    propre action (`userId == request.auth.uid`), champs requis validés, lecture réservée aux
    admins, modification/suppression **toujours refusées, même pour un admin** (ajout seul), et
-   la messagerie `demandes_financement/{id}/messages` (J5.1-J5.2) : lecture/écriture réservées
-   au propriétaire de la demande, à l'admin et au partenaire financeur, création impossible en
-   usurpant l'identité d'un autre auteur (`auteur_id == request.auth.uid`), modification/
-   suppression toujours refusées (même logique d'ajout seul que `audit_logs`).
+   la messagerie `demandes_financement/{id}/messages` (J5.1-J5.2, restreinte en J5.5) :
+   lecture/écriture réservées au propriétaire de la demande, à l'admin, et au partenaire
+   financeur **spécifiquement assigné** à cette demande précise (`partenaire_id ==
+   request.auth.uid`) — pas n'importe quel compte `partenaireFinanceur` comme dans la version
+   initiale de J5.1-J5.2 —, création impossible en usurpant l'identité d'un autre auteur
+   (`auteur_id == request.auth.uid`), modification/suppression toujours refusées (même logique
+   d'ajout seul que `audit_logs`).
 
 Les suites 2 et 3 tournent sous le **même** démarrage d'émulateur Firestore (une seule
 commande `firebase emulators:exec`, deux `npm` enchaînés) pour éviter de le lancer deux fois.
@@ -584,6 +592,12 @@ Tests présents (`test/`) :
   de `CarteAleaScreen`) ; réduction de prime selon le Score Climat (score excellent → -25 %
   affiché, aucun score calculé → aucune ligne de réduction). Même fake `GeolocatorPlatform` que
   `carte_alea_screen_test.dart`.
+- `widgets/messagerie_partenaire_screen_test.dart` (J5.4) — état vide (« Aucun message pour
+  l'instant »), affichage d'un fil existant avec bulles alignées selon l'auteur (le nom de
+  l'auteur n'apparaît que sur les messages qui ne sont pas les miens), envoi d'un message via le
+  champ de texte + bouton d'envoi (écriture Firestore vérifiée, champ vidé après envoi). Même
+  stratégie de fake `AuthViewModel`/`fake_cloud_firestore` que les autres tests widgets de ce
+  dossier.
 - `widget_test.dart` — smoke test du design system (`AppTheme` clair/sombre + composants `Ga*`
   se rendent sans exception). Ne boote **pas** `GreenAccessApp` en entier : dès son premier
   `build()`, l'app touche trois plugins Firebase réels (Auth, Firestore, Messaging) dont le
@@ -834,16 +848,26 @@ seulement en local) :
 > niveau repository, comme documenté en §7, plutôt que d'introduire un nouveau précédent de
 > test isolé).
 
-> **Phase 5 — Messagerie & badges certifiés (démarrée) : J5.1-J5.3, fondations de la
-> messagerie liée à une demande de financement.** `MessageModel` + sous-collection
+> **Phase 5 — Messagerie & badges certifiés (J5.1-J5.6 terminées) : messagerie liée à une
+> demande de financement, bout en bout.** `MessageModel` + sous-collection
 > `demandes_financement/{id}/messages` (J5.1), `MessagerieRepository` (J5.2 — envoi de message,
 > flux temps réel via `streamMessages()`), `MessagerieViewModel` (J5.3 — s'abonne au flux dès
-> sa création, comme `NotificationViewModel`). Règle Firestore en ajout seul (même esprit que
-> `audit_logs`) : lecture/écriture réservées au propriétaire de la demande, à l'admin et au
-> partenaire financeur assigné, création impossible en usurpant l'identité d'un autre auteur,
-> modification/suppression toujours refusées une fois un message envoyé. **Pas encore d'écran
-> de conversation** — ces 3 tâches livrent le modèle/repository/viewmodel testables (couverts
-> §7), l'UI viendra dans une tâche ultérieure du plan d'implémentation.
+> sa création, comme `NotificationViewModel`), `MessageriePartenaireScreen` (J5.4 — interface de
+> chat : bulles alignées par auteur, auto-scroll vers le dernier message, envoi via champ de
+> texte, états vide/chargement/erreur ; accessible depuis une icône messagerie dans l'AppBar de
+> `StatutDemandeScreen` côté demandeur et dans chaque carte de `AdminDemandesScreen` côté
+> admin/partenaire, route `/financement/statut/:demandeId/messages`). Règle Firestore en ajout
+> seul (même esprit que `audit_logs`), **restreinte en J5.5** : lecture/écriture réservées au
+> propriétaire de la demande, à l'admin, et au partenaire financeur **spécifiquement assigné à
+> cette demande précise** (`partenaire_id == request.auth.uid`) — la version initiale de
+> J5.1-J5.2 autorisait par erreur n'importe quel compte `partenaireFinanceur`, pas seulement
+> celui assigné à la demande ; corrigé avant tout déploiement, couvert par 2 tests dédiés
+> (assigné vs. non-assigné) — création impossible en usurpant l'identité d'un autre auteur,
+> modification/suppression toujours refusées une fois un message envoyé. Notification FCM au
+> destinataire (J5.6) : Cloud Function `onMessageSent`, helper testable
+> `getDestinataireToken()` détermine « l'autre partie » de la conversation (le partenaire
+> assigné si l'auteur est le demandeur, le demandeur sinon), aucune notification si aucun
+> partenaire n'est encore assigné ou si le destinataire n'a pas de token FCM.
 
 **Fait**
 
@@ -865,14 +889,15 @@ seulement en local) :
 - **CI/CD GitHub Actions** : pipeline `analyze → test → build web / apk debug` sur chaque push
   + workflow de build APK release à la demande (§6ter)
 - Chaîne Android mise à niveau pour Flutter 3.47 (Gradle/AGP/Kotlin)
-- 178 tests `flutter test` répartis sur 4 catégories (détail complet §7) : ~99 tests unitaires
+- 182 tests `flutter test` répartis sur 4 catégories (détail complet §7) : ~99 tests unitaires
   de ViewModels (9 fichiers — Admin/Assurance/Auth/Financement/Formation/Messagerie/
-  Notification/Partenaire/Scoring), 9 widget tests (Login, ScoringForm, ScoreResult,
-  DemandeForm, Dashboard, Financement, Profil, CarteAlea, SimulateurAssurance — validation,
-  navigation par étapes, verrou de financement CDC §4.1, connexion Google, export RGPD, rendu
-  de carte, ciblage GPS, réduction de prime par score, états d'erreur/chargement), des tests de
-  repositories/fonctions utilitaires purs ciblant directement le code métier sans passer par un
-  ViewModel (`ExportRepository`, `AuditRepository`, `AssuranceRepository`,
+  Notification/Partenaire/Scoring), 10 widget tests (Login, ScoringForm, ScoreResult,
+  DemandeForm, Dashboard, Financement, Profil, CarteAlea, SimulateurAssurance,
+  MessageriePartenaire — validation, navigation par étapes, verrou de financement CDC §4.1,
+  connexion Google, export RGPD, rendu de carte, ciblage GPS, réduction de prime par score,
+  interface de chat (état vide, bulles par auteur, envoi), états d'erreur/chargement), des
+  tests de repositories/fonctions utilitaires purs ciblant directement le code métier sans
+  passer par un ViewModel (`ExportRepository`, `AuditRepository`, `AssuranceRepository`,
   `MessagerieRepository`, `export_formatters.dart` — nouvelle catégorie depuis J3.4), et 2
   scénarios d'intégration (RGPD export+suppression J3.9, carte→produit paramétrique T06 J4.14)
   + smoke test du design system, exécutés en CI ; ont révélé et corrigé 3 bugs réels
@@ -882,14 +907,16 @@ seulement en local) :
 - Couverture de code lcov calculée et publiée en résumé de CI à chaque build (§6ter) — 26 %
   mesurés, sous la cible CDC §7.1 (45-55 %), écart noté pour prioriser les prochaines tâches
   de tests
-- Tests des Firestore Security Rules (`firestore-tests/`, 32 tests) contre l'émulateur, en CI
+- Tests des Firestore Security Rules (`firestore-tests/`, 34 tests) contre l'émulateur, en CI
   (isolation utilisateur, anti-élévation de rôle, droits partenaireFinanceur/partenaireAssureur,
   cloisonnement Assurance/paiements/remboursements, accès admin-only, journal d'audit
   `audit_logs` en ajout seul et inviolable, messagerie de demande de financement en ajout
-  seul réservée au propriétaire/admin/partenaire financeur) — voir §6ter
-- Tests des Cloud Functions (`functions/test/`, 28 tests), en CI — formule `calculerScoreClimat`
+  seul réservée au propriétaire/admin/partenaire financeur spécifiquement assigné à la
+  demande — assigné vs. non-assigné, J5.5) — voir §6ter
+- Tests des Cloud Functions (`functions/test/`, 34 tests), en CI — formule `calculerScoreClimat`
   (poids CDC exacts, bornes 0-100, arrondi, contrôle d'accès), triggers `onCourseCompleted`
-  (badge + idempotence), `onDemandeSubmitted` (ciblage partenaires financeurs) et
+  (badge + idempotence), `onDemandeSubmitted` (ciblage partenaires financeurs),
+  `onMessageSent` (J5.6 — notification FCM au destinataire d'un message) et
   `checkAlertesClimatiques` (seuils sécheresse/inondation/chaleur, Open-Meteo mocké) ; a
   révélé et corrigé un bug réel de borne basse manquante (score négatif possible avec une
   entrée hors plage)

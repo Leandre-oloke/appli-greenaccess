@@ -20,11 +20,14 @@ import {
   onCourseCompleted,
   onDemandeSubmitted,
   getPartenaireFinanceurTokens,
+  onMessageSent,
+  getDestinataireToken,
 } from "../src/index";
 
 const db = admin.firestore();
 const wrappedOnCourseCompleted = testEnv.wrap(onCourseCompleted);
 const wrappedOnDemandeSubmitted = testEnv.wrap(onDemandeSubmitted);
+const wrappedOnMessageSent = testEnv.wrap(onMessageSent);
 
 // Nettoie entre les tests pour éviter qu'un document d'un test précédent
 // (même collection, ids fixes) ne fausse une assertion.
@@ -155,5 +158,57 @@ test("onDemandeSubmitted ne fait rien pour une demande encore en brouillon", asy
 
   await assert.doesNotReject(
     wrappedOnDemandeSubmitted(snap, { params: { demandeId: "d2" } }),
+  );
+});
+
+// ── J5.6 — onMessageSent : notification FCM au destinataire d'un message ───
+
+test("getDestinataireToken renvoie le token du partenaire assigné quand l'auteur est le demandeur", async () => {
+  await db.collection("users").doc("financeur1").set({ role: "partenaireFinanceur", fcm_token: "tok-financeur-1" });
+
+  const token = await getDestinataireToken("alice", "financeur1", "alice");
+  assert.equal(token, "tok-financeur-1");
+});
+
+test("getDestinataireToken renvoie le token du demandeur quand l'auteur est le partenaire/admin", async () => {
+  await db.collection("users").doc("alice").set({ role: "user", fcm_token: "tok-alice" });
+
+  const token = await getDestinataireToken("alice", "financeur1", "financeur1");
+  assert.equal(token, "tok-alice");
+});
+
+test("getDestinataireToken renvoie null si aucun partenaire n'est encore assigné", async () => {
+  const token = await getDestinataireToken("alice", undefined, "alice");
+  assert.equal(token, null);
+});
+
+test("getDestinataireToken renvoie null si le destinataire n'a pas de token FCM", async () => {
+  await db.collection("users").doc("financeur2").set({ role: "partenaireFinanceur" }); // pas de token
+
+  const token = await getDestinataireToken("alice", "financeur2", "alice");
+  assert.equal(token, null);
+});
+
+test("onMessageSent se déclenche sans erreur pour un nouveau message (aucun destinataire à notifier)", async () => {
+  await clearCollection("users"); // aucun token FCM → messaging() jamais appelé
+  await db.collection("demandes_financement").doc("d3").set({ userId: "alice", statut: "soumis" });
+  const snap = testEnv.firestore.makeDocumentSnapshot(
+    { demande_id: "d3", auteur_id: "alice", auteur_nom: "Alice", contenu: "Bonjour" },
+    "demandes_financement/d3/messages/m1",
+  );
+
+  await assert.doesNotReject(
+    wrappedOnMessageSent(snap, { params: { demandeId: "d3", messageId: "m1" } }),
+  );
+});
+
+test("onMessageSent ne fait rien si la demande associée n'existe pas (aucune erreur levée)", async () => {
+  const snap = testEnv.firestore.makeDocumentSnapshot(
+    { demande_id: "inexistante", auteur_id: "alice", auteur_nom: "Alice", contenu: "x" },
+    "demandes_financement/inexistante/messages/m1",
+  );
+
+  await assert.doesNotReject(
+    wrappedOnMessageSent(snap, { params: { demandeId: "inexistante", messageId: "m1" } }),
   );
 });

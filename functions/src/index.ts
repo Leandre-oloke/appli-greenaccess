@@ -274,6 +274,58 @@ export const onDemandeSubmitted = functions
     functions.logger.info(`Demande ${context.params.demandeId} notifiée à ${tokens.length} partenaires.`);
   });
 
+// ── Cloud Function : onMessageSent ───────────────────────────────────────────
+
+// Extraite pour être testable indépendamment de admin.messaging() (même
+// contrainte que getPartenaireFinanceurTokens ci-dessus). Le destinataire est
+// "l'autre partie" de la conversation : si l'auteur est le demandeur, on
+// notifie le partenaire financeur assigné à la demande (aucune notification
+// si aucun partenaire n'est encore assigné) ; sinon (l'auteur est le
+// partenaire ou un admin), on notifie le demandeur.
+export async function getDestinataireToken(
+  demandeUserId: string,
+  demandePartenaireId: string | undefined,
+  auteurId: string
+): Promise<string | null> {
+  const destinataireId = auteurId === demandeUserId ? demandePartenaireId : demandeUserId;
+  if (!destinataireId) return null;
+
+  const userSnap = await db.collection("users").doc(destinataireId).get();
+  return userSnap.data()?.fcm_token ?? null;
+}
+
+export const onMessageSent = functions
+  .region("europe-west1")
+  .firestore.document("demandes_financement/{demandeId}/messages/{messageId}")
+  .onCreate(async (snap, context) => {
+    const message = snap.data();
+    if (!message) return;
+
+    const demandeSnap = await db
+      .collection("demandes_financement")
+      .doc(context.params.demandeId)
+      .get();
+    const demande = demandeSnap.data();
+    if (!demande) return;
+
+    const token = await getDestinataireToken(demande.userId, demande.partenaire_id, message.auteur_id);
+    if (!token) {
+      functions.logger.info(`Message ${context.params.messageId} : aucun destinataire à notifier.`);
+      return;
+    }
+
+    await admin.messaging().sendEachForMulticast({
+      tokens: [token],
+      notification: {
+        title: `Nouveau message de ${message.auteur_nom}`,
+        body: message.contenu,
+      },
+      data: { demandeId: context.params.demandeId },
+    });
+
+    functions.logger.info(`Message ${context.params.messageId} notifié.`);
+  });
+
 // ── Cloud Function : onAlertClimatique (schedulée) ───────────────────────────
 
 export type TypeAlerte = "secheresse" | "inondation" | "chaleur" | null;
