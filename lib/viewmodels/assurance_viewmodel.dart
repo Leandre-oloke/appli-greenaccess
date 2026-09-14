@@ -199,3 +199,19 @@ final assuranceViewModelProvider =
     StateNotifierProvider.family<AssuranceViewModel, AssuranceState, String>(
   (ref, userId) => AssuranceViewModel(AssuranceRepository(), userId),
 );
+
+/// Zones à risque climatique (J4.7, CDC §3 M4) — provider autonome, sans
+/// dépendre d'un `userId` : les zones ne sont pas propres à un utilisateur,
+/// contrairement au reste de `AssuranceState`. Utilisé par `CarteAleaScreen`.
+final zonesAleaProvider = FutureProvider<List<ZoneAleaModel>>(
+  (ref) => AssuranceRepository().getZonesAlea(),
+);
+
+/// Produits d'assurance éligibles pour une zone donnée (J4.9) — un provider
+/// par nom de zone (`.family`), pour que la feuille de produits d'une zone
+/// tapée sur la carte se recharge proprement si l'utilisateur tape une autre
+/// zone sans rouvrir tout l'écran.
+final produitsParZoneProvider =
+    FutureProvider.family<List<ProduitAssuranceModel>, String>(
+  (ref, zone) => AssuranceRepository().getProduitsParZone(zone),
+);

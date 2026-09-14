@@ -2,17 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../models/assurance_model.dart';
+import '../../routes.dart';
 import '../../viewmodels/assurance_viewmodel.dart';
-import '../../viewmodels/auth_viewmodel.dart';
 
-/// Carte interactive des zones à risque climatique (J4.4-J4.6, CDC §3 M4) —
+/// Carte interactive des zones à risque climatique (J4.4-J4.9, CDC §3 M4) —
 /// fond OpenStreetMap, un marqueur + un cercle de risque par zone (couleur
 /// selon le niveau, icône selon le type d'aléa), position GPS optionnelle de
-/// l'utilisateur.
+/// l'utilisateur, et une feuille de produits d'assurance éligibles au tap
+/// sur une zone.
 class CarteAleaScreen extends ConsumerStatefulWidget {
   const CarteAleaScreen({super.key});
 
@@ -30,17 +32,6 @@ class _CarteAleaScreenState extends ConsumerState<CarteAleaScreen> {
   LatLng? _position;
   bool _gpsLoading = false;
   String? _gpsError;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final uid = ref.read(authViewModelProvider).user?.id ?? '';
-      if (uid.isNotEmpty) {
-        ref.read(assuranceViewModelProvider(uid).notifier).loadZonesAlea();
-      }
-    });
-  }
 
   Future<void> _localiser() async {
     setState(() {
@@ -97,22 +88,25 @@ class _CarteAleaScreenState extends ConsumerState<CarteAleaScreen> {
         _ => type,
       };
 
-  void _afficherZone(ZoneAleaModel zone) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '${zone.nom} — ${_typeLabel(zone.typeAlea)} (risque ${zone.niveauRisque})',
-        ),
-        duration: const Duration(seconds: 3),
+  void _ouvrirProduitsZone(ZoneAleaModel zone) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => _ZoneProduitsSheet(
+        zone: zone,
+        riskColor: _riskColor,
+        typeLabel: _typeLabel,
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final uid = ref.watch(authViewModelProvider).user?.id ?? '';
-    final state = ref.watch(assuranceViewModelProvider(uid));
-    final zones = state.zonesAlea;
+    final zonesAsync = ref.watch(zonesAleaProvider);
+    final zones = zonesAsync.valueOrNull ?? const <ZoneAleaModel>[];
 
     return Scaffold(
       appBar: AppBar(title: const Text('Carte des aléas climatiques')),
@@ -151,7 +145,7 @@ class _CarteAleaScreenState extends ConsumerState<CarteAleaScreen> {
                       width: 34,
                       height: 34,
                       child: GestureDetector(
-                        onTap: () => _afficherZone(z),
+                        onTap: () => _ouvrirProduitsZone(z),
                         child: Tooltip(
                           message: '${z.nom} — ${_typeLabel(z.typeAlea)}',
                           child: Icon(_typeIcon(z.typeAlea),
@@ -173,7 +167,7 @@ class _CarteAleaScreenState extends ConsumerState<CarteAleaScreen> {
             ],
           ),
 
-          if (state.isLoading)
+          if (zonesAsync.isLoading)
             const Positioned(
               top: 12,
               left: 0,
@@ -181,7 +175,7 @@ class _CarteAleaScreenState extends ConsumerState<CarteAleaScreen> {
               child: Center(child: CircularProgressIndicator()),
             ),
 
-          if (_gpsError != null)
+          if (_gpsError != null || zonesAsync.hasError)
             Positioned(
               top: 12,
               left: 16,
@@ -191,7 +185,10 @@ class _CarteAleaScreenState extends ConsumerState<CarteAleaScreen> {
                 borderRadius: BorderRadius.circular(8),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  child: Text(_gpsError!, style: const TextStyle(color: Colors.white)),
+                  child: Text(
+                    _gpsError ?? 'Zones à risque indisponibles. Tirez pour réessayer.',
+                    style: const TextStyle(color: Colors.white),
+                  ),
                 ),
               ),
             ),
@@ -253,6 +250,128 @@ class _Legende extends StatelessWidget {
                   ))
               .toList(),
         ),
+      ),
+    );
+  }
+}
+
+/// Feuille de produits d'assurance éligibles pour une zone tapée sur la
+/// carte (J4.9) — relie la carte des aléas à l'offre d'assurance.
+class _ZoneProduitsSheet extends ConsumerWidget {
+  final ZoneAleaModel zone;
+  final Color Function(String) riskColor;
+  final String Function(String) typeLabel;
+
+  const _ZoneProduitsSheet({
+    required this.zone,
+    required this.riskColor,
+    required this.typeLabel,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final produitsAsync = ref.watch(produitsParZoneProvider(zone.nom));
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.location_on, color: riskColor(zone.niveauRisque)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(zone.nom,
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${typeLabel(zone.typeAlea)} · Risque ${zone.niveauRisque}',
+              style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            ),
+            const SizedBox(height: 20),
+            const Text('Produits d\'assurance éligibles',
+                style: TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            produitsAsync.when(
+              data: (produits) => produits.isEmpty
+                  ? _AucunProduitEligible(onVoirTous: () {
+                      Navigator.of(context).pop();
+                      context.push(AppRoutes.fichesProduit);
+                    })
+                  : Column(children: produits.map((p) => _ProduitTile(produit: p)).toList()),
+              loading: () => const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+              error: (_, __) => const Text(
+                'Erreur de chargement des produits. Réessayez.',
+                style: TextStyle(color: AppColors.error),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProduitTile extends StatelessWidget {
+  final ProduitAssuranceModel produit;
+  const _ProduitTile({required this.produit});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: const CircleAvatar(
+          backgroundColor: AppColors.primarySoft,
+          child: Icon(Icons.shield_outlined, color: AppColors.primary),
+        ),
+        title: Text(produit.libelle, style: const TextStyle(fontWeight: FontWeight.w500)),
+        subtitle: Text(
+          '${produit.primeMin.toStringAsFixed(0)} – ${produit.primeMax.toStringAsFixed(0)} FCFA/mois',
+        ),
+        trailing: OutlinedButton(
+          onPressed: () {
+            Navigator.of(context).pop();
+            context.push(AppRoutes.simulateurAssurance);
+          },
+          child: const Text('Simuler'),
+        ),
+      ),
+    );
+  }
+}
+
+class _AucunProduitEligible extends StatelessWidget {
+  final VoidCallback onVoirTous;
+  const _AucunProduitEligible({required this.onVoirTous});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Aucun produit éligible pour cette zone pour le moment.',
+            style: TextStyle(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: onVoirTous,
+            icon: const Icon(Icons.grid_view),
+            label: const Text('Voir tous les produits'),
+          ),
+        ],
       ),
     );
   }

@@ -517,19 +517,24 @@ Tests présents (`test/`) :
   `tester.ensureVisible()` avant le tap, plutôt que l'agrandissement de viewport utilisé pour
   le `SliverList` de `dashboard_screen_test.dart` (les deux pièges sont liés à la
   virtualisation/au défilement mais se corrigent différemment selon le type de scroll).
-- `widgets/carte_alea_screen_test.dart` (J4.4-J4.6) — carte OpenStreetMap (`flutter_map`),
-  marqueur + légende par type d'aléa, bouton de géolocalisation (accordée/refusée). Sans accès
-  réseau réel aux tuiles (le mock HTTP de `flutter_test` renvoie 400 à toute requête — attendu,
-  documenté en tête de fichier, ne fait pas échouer les tests puisque `TileLayer` absorbe les
-  échecs de tuile sans lever). Deux pièges de test réels : (1) `find.byIcon(...)` est ambigu
-  ici car la légende réutilise les mêmes icônes que les marqueurs, et `flutter_map` peut
-  dessiner plusieurs copies d'un même marqueur (répétition horizontale de la carte à faible
-  zoom) — corrigé en identifiant chaque marqueur par le message unique de son `Tooltip`
-  (`"Ville — Type"`) plutôt que par icône ; (2) assertions GPS passées de `findsOneWidget` à
-  `findsWidgets` pour la même raison de duplication. `GeolocatorPlatform.instance` substitué
-  par un fake (`geolocator_platform_interface` ajouté en `dev_dependencies`) plutôt que
-  d'appeler le vrai canal de plateforme, indisponible en test. A révélé un vrai bug de
-  production : la tuile d'action « Carte des aléas » sur `AssuranceScreen` pointait vers
+- `widgets/carte_alea_screen_test.dart` (J4.4-J4.9) — carte OpenStreetMap (`flutter_map`),
+  marqueur + légende par type d'aléa, bouton de géolocalisation (accordée/refusée), feuille de
+  produits d'assurance éligibles au tap sur une zone (J4.9 — produits listés et bouton
+  « Simuler », ou état vide + lien « Voir tous les produits » quand aucun produit n'est
+  éligible). Sans accès réseau réel aux tuiles (le mock HTTP de `flutter_test` renvoie 400 à
+  toute requête — attendu, documenté en tête de fichier, ne fait pas échouer les tests puisque
+  `TileLayer` absorbe les échecs de tuile sans lever). Deux pièges de test réels : (1)
+  `find.byIcon(...)` est ambigu ici car la légende réutilise les mêmes icônes que les
+  marqueurs, et `flutter_map` peut dessiner plusieurs copies d'un même marqueur (répétition
+  horizontale de la carte à faible zoom) — corrigé en identifiant chaque marqueur par le
+  message unique de son `Tooltip` (`"Ville — Type"`) plutôt que par icône ; (2) assertions GPS
+  passées de `findsOneWidget` à `findsWidgets` pour la même raison de duplication.
+  `GeolocatorPlatform.instance` substitué par un fake (`geolocator_platform_interface` ajouté
+  en `dev_dependencies`) plutôt que d'appeler le vrai canal de plateforme, indisponible en
+  test. Les boutons « Simuler »/« Voir tous les produits » ne sont testés que pour leur
+  présence, pas leur tap : ils appellent `context.push()` (go_router), indisponible sans
+  routeur réel dans ce test (même limite que les autres écrans de ce dossier). A révélé un vrai
+  bug de production : la tuile d'action « Carte des aléas » sur `AssuranceScreen` pointait vers
   `AppRoutes.fichesProduit` (probablement un espace réservé le temps que l'écran carte
   existe) — corrigée pour pointer vers la nouvelle route `AppRoutes.carteAlea`.
 - `widget_test.dart` — smoke test du design system (`AppTheme` clair/sombre + composants `Ga*`
@@ -734,6 +739,21 @@ seulement en local) :
 > vide côté Firestore (même convention que les cours de démo de `CoursRepository`). A révélé un
 > vrai bug de production, corrigé au passage : la tuile « Carte des aléas » sur
 > `AssuranceScreen` pointait vers le mauvais écran (`fichesProduit`) — détail §7.
+>
+> **Phase 4 — J4.7-J4.9 : provider dédié, intégration au module et lien vers l'offre
+> d'assurance.** J4.7 : `zonesAleaProvider` (`FutureProvider`, sans dépendre d'un `userId` —
+> les zones ne sont propres à aucun utilisateur) expose désormais les zones à `CarteAleaScreen`
+> indépendamment de `AssuranceViewModel`/`AssuranceState` (qui reste utilisé tel quel par
+> `AssuranceScreen`/`FichesProduitScreen`, aucune régression). J4.8 : déjà acquis depuis
+> J4.4-J4.6 (route `/assurance/carte` enregistrée sous la branche Assurance du shell, tuile
+> « Carte des aléas » corrigée pour y pointer) — l'app n'a pas d'onglet dédié à la carte, elle
+> est accessible en un tap depuis l'écran Assurance, ce qui correspond à « route + onglet »
+> pour ce module (pas de tab bar interne au module). J4.9 : `produitsParZoneProvider`
+> (`FutureProvider.family` par nom de zone) + tap sur un marqueur ouvre une feuille modale
+> listant les produits d'assurance éligibles (`AssuranceRepository.getProduitsParZone`, déjà
+> existant, jamais branché à une UI avant) avec bouton « Simuler », ou un état vide + lien vers
+> le catalogue complet si aucun produit n'est éligible (attendu : `produits_assurance` n'a pas
+> encore d'outil d'administration pour être peuplée, voir §8 « Fait »).
 
 **Fait**
 
