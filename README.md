@@ -46,7 +46,7 @@ lib/
 │   ├── tokens/       # couleurs (clair+sombre), spacing, radii, typo, motion, score-scale
 │   ├── theme/        # AppTheme.light/.dark + ThemeExtensions (GaShadows, GaGradients…)
 │   ├── motion/       # transitions de route (GaPageTransitions) + presets d'entrée
-│   └── components/   # 17 composants Ga* (GaCard, GaScoreGauge, GaStepper, GaChoiceGroup…)
+│   └── components/   # 22 composants Ga* (GaCard, GaScoreGauge, GaStepper, GaChoiceGroup…)
 │
 ├── models/          # modèles de données immuables (+ enums de statut)
 │   ├── user_model.dart              (UserModel, UserRole)
@@ -1162,6 +1162,27 @@ existant a donc pu être instrumenté sans casser un seul test déjà vert.
 > que tâche par tâche — le détail complet reste ici, en §7/§8), section 8 de ce README tenue à
 > jour au fil de l'eau depuis le début du projet.
 
+> **Refonte frontend premium (mission dédiée, hors plan CDC J1-J6) — Phase 1 (audit) et
+> Phase 2 (plan classé CRITIQUE/IMPORTANT/NICE TO HAVE) livrées, Phase 3 démarrée.** L'app
+> étant déjà fonctionnellement complète (Phases 1-6 ci-dessus), cette mission vise une passe
+> de qualité visuelle/UX sur les 32 écrans encore hors du design system « Organic Fintech »
+> (9/41 déjà couverts, voir plus haut), sans toucher la logique métier/Firebase/Riverpod.
+> L'audit a chiffré l'écart : 45 littéraux de couleur sur 16 fichiers, 8/10 ViewModels
+> affichant une erreur technique brute (`e.toString()`), 28/39 `IconButton` sans tooltip,
+> 1/41 écran avec un état de chargement squelette. Le plan retenu (classement détaillé non
+> reproduit ici, voir l'échange qui l'a validé) ouvre l'implémentation par le Design System
+> lui-même : **étape 1 (ce commit)** ajoute les composants qui manquaient pour retoucher les
+> écrans legacy sans dupliquer de nouveaux widgets ad-hoc — `GaListTile` (remplace les
+> `ListTile` décorés à la main), `GaStatusTimeline` (frise de statut, financement/sinistre),
+> `GaFilterBar` (recherche + chips), `GaFormCard` (section de formulaire titrée), `GaErrorView`
+> (bandeau d'erreur traduit) — et surtout `lib/utils/error_mapper.dart`
+> (`mapErrorToMessage()`), point d'entrée unique de traduction erreur technique → message
+> utilisateur, généralisant le pattern déjà validé dans `AuthViewModel._mapError` /
+> `AdminViewModel._msg` (switch sur le `.code` de `FirebaseAuthException`/`FirebaseException`,
+> repli générique sinon). Aucun écran existant n'est encore retouché à ce stade — ces
+> composants seront consommés au fil des étapes suivantes (navigation, Dashboard, Formation,
+> Score Climat, Financement, Assurance, Notifications, Profil), chacune committée séparément.
+
 **Fait**
 
 - Architecture MVVM + Riverpod + go_router en place, 5 modules métier câblés bout en bout
@@ -1177,12 +1198,14 @@ existant a donc pu être instrumenté sans casser un seul test déjà vert.
 - Cloud Functions : scoring, triggers cours/demande, alertes climatiques planifiées
 - Exécution Web via Codespaces (`.devcontainer/`) — cible sans Android/iOS
 - **Design system « Organic Fintech »** (`lib/ui/`) : jetons clair/sombre, thème Material 3,
-  17 composants `Ga*`, jauge de score animée, transitions de route par flux ; 9 écrans vitrine
-  refondus bout en bout (auth complet, dashboard, parcours scoring)
+  22 composants `Ga*` (dont `GaListTile`/`GaStatusTimeline`/`GaFilterBar`/`GaFormCard`/
+  `GaErrorView`, ajoutés pour la refonte frontend, étape « Design System »), jauge de score
+  animée, transitions de route par flux ; 9 écrans vitrine refondus bout en bout (auth complet,
+  dashboard, parcours scoring)
 - **CI/CD GitHub Actions** : pipeline `analyze → test → build web / apk debug` sur chaque push
   + workflow de build APK release à la demande (§6ter)
 - Chaîne Android mise à niveau pour Flutter 3.47 (Gradle/AGP/Kotlin)
-- 211 tests `flutter test` répartis sur 4 catégories (détail complet §7) : ~106 tests unitaires
+- 229 tests `flutter test` répartis sur 4 catégories (détail complet §7) : ~106 tests unitaires
   de ViewModels (9 fichiers — Admin/Assurance/Auth/Financement/Formation/Messagerie/
   Notification/Partenaire/Scoring, dont le badge Financé Vert à l'approbation J5.15, et la
   création de profil à la première connexion par OTP J6.2), 11 widget tests (Login, ScoringForm,
@@ -1198,7 +1221,10 @@ existant a donc pu être instrumenté sans casser un seul test déjà vert.
   Climat/Financé Vert, nouveau fichier de test —, `MessagerieRepository`,
   `export_formatters.dart`, `eligibilite_financement.dart` — règle 4.1, J5.14 —,
   `badge_export_formatters.dart` — export JSON/PDF, J5.16 —, `perf_trace.dart` — traces
-  best-effort, J6.6, nouvelle catégorie depuis J3.4), et 4
+  best-effort, J6.6 —, `error_mapper.dart` — mapping d'erreur centralisé, refonte frontend
+  étape « Design System »), 9 tests de composants du design system (`GaListTile`,
+  `GaStatusTimeline`, `GaFilterBar`, `GaFormCard`, `GaErrorView` — nouveaux composants de la
+  même étape), et 4
   scénarios d'intégration (RGPD export+suppression J3.9, carte→produit paramétrique T06 J4.14,
   conversation demandeur/partenaire J5.9, règle +10 d'éligibilité du badge Assuré Climat J5.18)
   + smoke test du design system, exécutés en CI ; ont révélé et corrigé 3 bugs réels de
