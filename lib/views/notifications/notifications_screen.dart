@@ -3,8 +3,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/notification_model.dart';
+import '../../ui/ui.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 import '../../viewmodels/notification_viewmodel.dart';
+
+const _kFilterLabels = <String, NotificationType?>{
+  'Toutes': null,
+  'Info': NotificationType.info,
+  'Succès': NotificationType.success,
+  'Avertissement': NotificationType.warning,
+  'Alerte': NotificationType.alert,
+};
 
 class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
@@ -14,6 +23,10 @@ class NotificationsScreen extends ConsumerStatefulWidget {
 }
 
 class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+  String _selectedFilter = 'Toutes';
+
   @override
   void initState() {
     super.initState();
@@ -24,37 +37,86 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   }
 
   @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final uid = ref.watch(authViewModelProvider.select((s) => s.user?.id ?? ''));
     final state = ref.watch(notificationViewModelProvider(uid));
 
+    final type = _kFilterLabels[_selectedFilter];
+    final q = _query.trim().toLowerCase();
+    final filtered = state.notifications.where((n) {
+      final matchesType = type == null || n.type == type;
+      final matchesQuery = q.isEmpty ||
+          n.titre.toLowerCase().contains(q) ||
+          n.message.toLowerCase().contains(q);
+      return matchesType && matchesQuery;
+    }).toList();
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Notifications'),
-      ),
-      body: Builder(builder: (context) {
-        if (state.isLoading) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (state.notifications.isEmpty) {
-          return const _EmptyState();
-        }
-        return ListView.separated(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          itemCount: state.notifications.length,
-          separatorBuilder: (_, __) =>
-              const Divider(height: 1, indent: 16, endIndent: 16),
-          itemBuilder: (context, index) {
-            final notif = state.notifications[index];
-            final isNew = notif.createdAt.isAfter(state.lastReadAt);
-            return _NotifTile(
-              notif: notif,
-              isNew: isNew,
-              onTap: () => _showDetail(context, notif),
-            );
-          },
-        );
-      }),
+      appBar: AppBar(title: const Text('Notifications')),
+      body: state.isLoading
+          ? const Padding(
+              padding: EdgeInsets.all(GaSpacing.lg),
+              child: GaSkeletonList(itemCount: 6, itemHeight: 76),
+            )
+          : state.error != null
+              ? Padding(
+                  padding: const EdgeInsets.all(GaSpacing.lg),
+                  child: GaErrorView(
+                    error: state.error!,
+                    onRetry: () => ref.invalidate(notificationViewModelProvider(uid)),
+                  ),
+                )
+              : state.notifications.isEmpty
+                  ? const _EmptyState()
+                  : Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                              GaSpacing.lg, GaSpacing.md, GaSpacing.lg, 0),
+                          child: GaFilterBar(
+                            controller: _searchCtrl,
+                            hint: 'Rechercher une notification…',
+                            onChanged: (v) => setState(() => _query = v),
+                            filters: _kFilterLabels.keys.toList(),
+                            selectedFilter: _selectedFilter,
+                            onFilterSelected: (v) =>
+                                setState(() => _selectedFilter = v),
+                          ),
+                        ),
+                        Expanded(
+                          child: filtered.isEmpty
+                              ? const GaEmptyState(
+                                  icon: Icons.search_off_rounded,
+                                  title: 'Aucun résultat',
+                                  message:
+                                      'Essayez un autre filtre ou une autre recherche.',
+                                  compact: true,
+                                )
+                              : ListView.separated(
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  itemCount: filtered.length,
+                                  separatorBuilder: (_, __) => const Divider(
+                                      height: 1, indent: 16, endIndent: 16),
+                                  itemBuilder: (context, index) {
+                                    final notif = filtered[index];
+                                    final isNew =
+                                        notif.createdAt.isAfter(state.lastReadAt);
+                                    return _NotifTile(
+                                      notif: notif,
+                                      isNew: isNew,
+                                      onTap: () => _showDetail(context, notif),
+                                    );
+                                  },
+                                ),
+                        ),
+                      ],
+                    ),
     );
   }
 
@@ -89,18 +151,13 @@ class _NotifTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
+    return GaListTile(
       onTap: onTap,
       tileColor: isNew ? AppColors.primarySoft : null,
       leading: _TypeIcon(notif.type),
-      title: Text(
-        notif.titre,
-        style: TextStyle(
-          fontWeight: isNew ? FontWeight.w700 : FontWeight.w400,
-          fontSize: 14,
-        ),
-      ),
-      subtitle: Column(
+      title: notif.titre,
+      isThreeLine: true,
+      subtitleWidget: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 2),
@@ -127,7 +184,6 @@ class _NotifTile extends StatelessWidget {
               ),
             )
           : null,
-      isThreeLine: true,
     );
   }
 
@@ -175,27 +231,10 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.notifications_none, size: 72, color: AppColors.divider),
-          const SizedBox(height: 16),
-          const Text(
-            'Aucune notification',
-            style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Les annonces de l\'administrateur\napparaîtront ici en temps réel.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
-          ),
-        ],
-      ),
+    return const GaEmptyState(
+      icon: Icons.notifications_none,
+      title: 'Aucune notification',
+      message: "Les annonces de l'administrateur apparaîtront ici en temps réel.",
     );
   }
 }

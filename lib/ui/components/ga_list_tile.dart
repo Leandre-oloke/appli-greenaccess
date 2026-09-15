@@ -13,16 +13,22 @@ class GaListTile extends StatelessWidget {
     super.key,
     required this.title,
     this.subtitle,
+    this.subtitleWidget,
     this.leadingIcon,
     this.leading,
     this.trailing,
     this.onTap,
     this.iconColor,
+    this.tileColor,
     this.dense = false,
+    this.isThreeLine = false,
   });
 
   final String title;
   final String? subtitle;
+
+  /// Sous-titre personnalisé (ex. plusieurs lignes) — prioritaire sur [subtitle].
+  final Widget? subtitleWidget;
   final IconData? leadingIcon;
 
   /// Widget de tête personnalisé (ex. `CircleAvatar`) — prioritaire sur [leadingIcon].
@@ -30,7 +36,9 @@ class GaListTile extends StatelessWidget {
   final Widget? trailing;
   final VoidCallback? onTap;
   final Color? iconColor;
+  final Color? tileColor;
   final bool dense;
+  final bool isThreeLine;
 
   @override
   Widget build(BuildContext context) {
@@ -60,11 +68,12 @@ class GaListTile extends StatelessWidget {
         horizontal: GaSpacing.md,
         vertical: dense ? 0 : GaSpacing.xs,
       ),
+      tileColor: tileColor,
       leading: effectiveLeading,
       title: Text(title, style: theme.textTheme.titleMedium),
-      subtitle: subtitle == null
-          ? null
-          : Text(subtitle!, style: theme.textTheme.bodySmall),
+      subtitle: subtitleWidget ??
+          (subtitle == null ? null : Text(subtitle!, style: theme.textTheme.bodySmall)),
+      isThreeLine: isThreeLine,
       trailing: effectiveTrailing,
       onTap: onTap,
     );
