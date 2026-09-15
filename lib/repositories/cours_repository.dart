@@ -9,11 +9,17 @@ class CoursRepository {
   CoursRepository({FirebaseFirestore? firestore})
       : _firestore = firestore ?? FirebaseFirestore.instance;
 
+  // J6.7 (CDC §7.1 · T10) — borne défensive : sans effet sur le catalogue
+  // actuel (quelques dizaines de cours au plus), garde le premier rendu du
+  // tableau de bord rapide si le catalogue grossit significativement.
+  static const _defensiveLimit = 200;
+
   Future<List<CourseModel>> fetchAll() async {
     try {
       final snapshot = await _firestore
           .collection('courses')
           .where('actif', isEqualTo: true)
+          .limit(_defensiveLimit)
           .get();
       if (snapshot.docs.isNotEmpty) {
         return snapshot.docs
@@ -170,11 +176,34 @@ class CoursRepository {
     });
   }
 
+  /// Badge "Financé Vert" à l'approbation d'une demande de financement
+  /// (J5.15, CDC §4.3) — même pattern que [triggerAssureClimatBadge].
+  Future<void> triggerFinanceVertBadge(String userId) async {
+    const badgeId = 'finance_vert';
+    final badgeRef = _firestore
+        .collection('users')
+        .doc(userId)
+        .collection('badges')
+        .doc(badgeId);
+
+    final existing = await badgeRef.get();
+    if (existing.exists) return;
+
+    await badgeRef.set({
+      'nom': 'Financé Vert 🌱',
+      'description': 'Votre demande de financement vert a été approuvée. Votre projet est en route.',
+      'image_url': '',
+      'type': 'financement',
+      'date_obtention': FieldValue.serverTimestamp(),
+    });
+  }
+
   Future<List<CourseProgress>> fetchProgress(String userId) async {
     final snapshot = await _firestore
         .collection('users')
         .doc(userId)
         .collection('progress')
+        .limit(_defensiveLimit)
         .get();
     return snapshot.docs
         .map((doc) => CourseProgress.fromFirestore(doc.data(), doc.id))
@@ -186,6 +215,7 @@ class CoursRepository {
         .collection('users')
         .doc(userId)
         .collection('badges')
+        .limit(_defensiveLimit)
         .get();
     return snapshot.docs
         .map((doc) => BadgeModel.fromFirestore(doc.data(), doc.id))

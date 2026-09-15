@@ -5,6 +5,7 @@ import '../../core/constants/app_colors.dart';
 import '../../models/notification_model.dart';
 import '../../repositories/notification_repository.dart';
 import '../../routes.dart';
+import '../../utils/error_mapper.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 
 class AdminSettingsScreen extends ConsumerWidget {
@@ -51,6 +52,9 @@ class AdminSettingsScreen extends ConsumerWidget {
               'Rôles, comptes, accès', () => context.go(AppRoutes.adminUsers)),
           _tile(Icons.assignment_outlined, 'Demandes de financement',
               'Examiner et approuver les dossiers', () => context.go(AppRoutes.adminDemandes)),
+          _tile(Icons.map_outlined, 'Zones d\'aléa climatique',
+              'Importer/gérer les zones de la carte des risques',
+              () => context.go(AppRoutes.adminZonesAlea)),
 
           const Divider(),
           const Padding(
@@ -140,7 +144,7 @@ class AdminSettingsScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<NotificationType>(
-                  value: selectedType,
+                  initialValue: selectedType,
                   decoration: const InputDecoration(
                     labelText: 'Type',
                     border: OutlineInputBorder(),
@@ -192,7 +196,10 @@ class AdminSettingsScreen extends ConsumerWidget {
       );
     } catch (e) {
       messenger.showSnackBar(
-        SnackBar(content: Text('Erreur : $e'), backgroundColor: AppColors.error),
+        SnackBar(
+          content: Text(mapErrorToMessage(e, fallback: "Échec de l'envoi. Réessayez.")),
+          backgroundColor: AppColors.error,
+        ),
       );
     } finally {
       titreCtrl.dispose();

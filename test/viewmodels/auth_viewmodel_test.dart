@@ -1,0 +1,511 @@
+// Tests unitaires de AuthViewModel (J2.23) — même style que
+// assurance_viewmodel_test.dart : un fake AuthRepository qui n'appelle
+// jamais Firebase réel, injecté via ProviderContainer.overrides. Couvre la
+// connexion, l'inscription (dont la détection/nettoyage de compte orphelin
+// — profil Firestore supprimé par un admin mais compte Auth jamais
+// nettoyé), la déconnexion et la traduction des codes FirebaseAuthException
+// en messages affichables.
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:mockito/mockito.dart';
+
+import 'package:greenaccess/models/user_model.dart';
+import 'package:greenaccess/repositories/auth_repository.dart';
+import 'package:greenaccess/viewmodels/auth_viewmodel.dart';
+
+class _MockFirebaseAuth extends Mock implements FirebaseAuth {}
+
+// `Fake` (pas `Mock`) : on implémente juste le getter réellement utilisé
+// (credential.user!.uid dans AuthViewModel.register()) sans passer par
+// when()/thenReturn — un Mock nu échoue sur un getter non-nullable (uid)
+// stubé via when() sans génération de code (@GenerateMocks), faute de
+// valeur "dummy" pour String.
+class _FakeUser extends Fake implements User {
+  _FakeUser(this.uid, {this.displayName, this.email});
+  @override
+  final String uid;
+  @override
+  final String? displayName;
+  @override
+  final String? email;
+  @override
+  String? get phoneNumber => null; // Google Sign-In n'expose pas ce champ ici
+}
+
+class _FakeUserCredential extends Fake implements UserCredential {
+  _FakeUserCredential(this.user);
+  @override
+  final User? user;
+}
+
+UserCredential _credentialFor(String uid) => _FakeUserCredential(_FakeUser(uid));
+
+UserCredential _googleCredentialFor(
+  String uid, {
+  String? displayName,
+  String? email,
+}) =>
+    _FakeUserCredential(_FakeUser(uid, displayName: displayName, email: email));
+
+// ── Fake AuthRepository ──────────────────────────────────────────────────────
+
+class _FakeAuthRepository extends AuthRepository {
+  _FakeAuthRepository() : super(auth: _MockFirebaseAuth(), firestore: FakeFirebaseFirestore());
+
+  // AuthViewModel._init() (appelé par le constructeur) écoute
+  // authStateChanges immédiatement — sans cet override, ça délègue à
+  // _MockFirebaseAuth.authStateChanges() non stubbé (throw / null).
+  @override
+  Stream<User?> get authStateChanges => const Stream.empty();
+
+  /// File d'utilisateurs renvoyés par getCurrentUser() successifs (un appel
+  /// = un élément retiré) — permet de simuler des scénarios où l'état du
+  /// "compte courant" change entre deux appels (ex. orphelin détecté).
+  final List<UserModel?> currentUserQueue = [];
+  UserCredential? credentialToReturn;
+  Object? signInError;
+  Object? registerError;
+  bool orphanedAccountDeleted = false;
+  UserModel? savedProfile;
+  bool signOutCalled = false;
+  Object? changePasswordError;
+  Object? deleteAccountError;
+  bool deleteAccountCalled = false;
+  UserCredential? googleCredentialToReturn;
+  Object? googleSignInError;
+  Object? verifyOtpError;
+
+  @override
+  Future<void> sendOtpSms(String phoneNumber) async {}
+
+  @override
+  Future<UserCredential> verifyOtpCode(String smsCode) async {
+    if (verifyOtpError != null) throw verifyOtpError!;
+    return credentialToReturn!;
+  }
+
+  @override
+  Future<UserCredential> signInWithEmail(String email, String password) async {
+    if (signInError != null) throw signInError!;
+    return credentialToReturn!;
+  }
+
+  @override
+  Future<UserCredential> registerWithEmail(String email, String password) async {
+    if (registerError != null) {
+      final err = registerError!;
+      registerError = null; // n'échoue qu'une fois (utile pour _cleanOrphanAndRetry)
+      throw err;
+    }
+    return credentialToReturn!;
+  }
+
+  @override
+  Future<UserCredential?> signInWithGoogle() async {
+    if (googleSignInError != null) throw googleSignInError!;
+    return googleCredentialToReturn; // null = utilisateur a fermé le sélecteur
+  }
+
+  @override
+  Future<UserModel?> getCurrentUser() async =>
+      currentUserQueue.isNotEmpty ? currentUserQueue.removeAt(0) : null;
+
+  @override
+  Future<void> deleteOrphanedAuthAccount() async {
+    orphanedAccountDeleted = true;
+  }
+
+  @override
+  Future<void> saveUserProfile(UserModel user) async {
+    savedProfile = user;
+  }
+
+  @override
+  Future<void> signOut() async {
+    signOutCalled = true;
+  }
+
+  @override
+  Future<void> changePassword(String currentPassword, String newPassword) async {
+    if (changePasswordError != null) throw changePasswordError!;
+  }
+
+  @override
+  Future<void> deleteAccount(String password) async {
+    deleteAccountCalled = true;
+    if (deleteAccountError != null) throw deleteAccountError!;
+  }
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+UserModel _user({String id = 'uid1', UserRole role = UserRole.user}) => UserModel(
+      id: id,
+      nom: 'Alice',
+      email: 'alice@greenaccess.test',
+      telephone: '',
+      pays: 'Sénégal',
+      region: 'Dakar',
+      secteur: 'Agriculture',
+      dateInscription: DateTime.now(),
+      profilComplet: true,
+      role: role,
+    );
+
+ProviderContainer _makeContainer(_FakeAuthRepository repo) {
+  return ProviderContainer(
+    overrides: [
+      authViewModelProvider.overrideWith((ref) => AuthViewModel(repo)),
+    ],
+  );
+}
+
+void main() {
+  group('AuthViewModel — signIn', () {
+    test('succès : état authentifié avec le profil retourné par getCurrentUser', () async {
+      final repo = _FakeAuthRepository()
+        ..credentialToReturn = _credentialFor('uid1')
+        ..currentUserQueue.add(_user());
+      final container = _makeContainer(repo);
+      addTearDown(container.dispose);
+
+      await container.read(authViewModelProvider.notifier).signIn('alice@x.com', 'pass123');
+      final state = container.read(authViewModelProvider);
+
+      expect(state.isAuthenticated, isTrue);
+      expect(state.user?.id, 'uid1');
+      expect(state.isLoading, isFalse);
+      expect(state.error, isNull);
+    });
+
+    test('compte orphelin (Auth existe, profil Firestore absent) : supprime le compte et affiche un message',
+        () async {
+      final repo = _FakeAuthRepository()
+        ..credentialToReturn = _credentialFor('uid1')
+        ..currentUserQueue.add(null); // getCurrentUser() ne trouve aucun profil
+      final container = _makeContainer(repo);
+      addTearDown(container.dispose);
+
+      await container.read(authViewModelProvider.notifier).signIn('alice@x.com', 'pass123');
+      final state = container.read(authViewModelProvider);
+
+      expect(repo.orphanedAccountDeleted, isTrue);
+      expect(state.isAuthenticated, isFalse);
+      expect(state.error, contains('supprimé par un administrateur'));
+    });
+
+    test('mappe les codes FirebaseAuthException en messages affichables', () async {
+      final cases = {
+        'wrong-password': 'Mot de passe incorrect',
+        'user-not-found': 'Aucun compte avec cet email',
+        'email-already-in-use': 'Cet email est déjà utilisé',
+        'weak-password': 'Mot de passe trop faible (6 caractères min)',
+        'network-request-failed': 'Erreur réseau. Réessayez.',
+        'too-many-requests': 'Trop de tentatives. Réessayez plus tard.',
+        'code-totalement-inconnu': 'Une erreur est survenue. Réessayez.',
+      };
+
+      for (final entry in cases.entries) {
+        final repo = _FakeAuthRepository()
+          ..signInError = FirebaseAuthException(code: entry.key);
+        final container = _makeContainer(repo);
+        addTearDown(container.dispose);
+
+        await container.read(authViewModelProvider.notifier).signIn('alice@x.com', 'pass123');
+        final state = container.read(authViewModelProvider);
+
+        expect(state.error, entry.value, reason: 'code ${entry.key}');
+        expect(state.isAuthenticated, isFalse);
+        expect(state.isLoading, isFalse);
+      }
+    });
+  });
+
+  group('AuthViewModel — signInWithGoogle', () {
+    test('première connexion (aucun profil Firestore) : crée le profil depuis le compte Google',
+        () async {
+      final repo = _FakeAuthRepository()
+        ..googleCredentialToReturn = _googleCredentialFor(
+          'uid-google',
+          displayName: 'Alice Dupont',
+          email: 'alice@gmail.com',
+        );
+      // getCurrentUser() renvoie null : pas encore de profil Firestore pour cet uid.
+      final container = _makeContainer(repo);
+      addTearDown(container.dispose);
+
+      await container.read(authViewModelProvider.notifier).signInWithGoogle();
+      final state = container.read(authViewModelProvider);
+
+      expect(state.isAuthenticated, isTrue);
+      expect(state.user?.id, 'uid-google');
+      expect(state.user?.nom, 'Alice Dupont');
+      expect(state.user?.email, 'alice@gmail.com');
+      expect(state.user?.role, UserRole.user);
+      expect(state.user?.profilComplet, isFalse);
+      expect(repo.savedProfile?.id, 'uid-google');
+    });
+
+    test('connexion existante (profil Firestore déjà présent) : réutilise le profil sans le réécrire',
+        () async {
+      final repo = _FakeAuthRepository()
+        ..googleCredentialToReturn = _googleCredentialFor('uid-existing')
+        ..currentUserQueue.add(_user(id: 'uid-existing'));
+      final container = _makeContainer(repo);
+      addTearDown(container.dispose);
+
+      await container.read(authViewModelProvider.notifier).signInWithGoogle();
+      final state = container.read(authViewModelProvider);
+
+      expect(state.isAuthenticated, isTrue);
+      expect(state.user?.id, 'uid-existing');
+      expect(repo.savedProfile, isNull); // profil existant : pas de ré-écriture
+    });
+
+    test('annulation (sélecteur de compte fermé sans choix) : pas d\'erreur, reste non authentifié',
+        () async {
+      final repo = _FakeAuthRepository(); // googleCredentialToReturn reste null
+      final container = _makeContainer(repo);
+      addTearDown(container.dispose);
+
+      await container.read(authViewModelProvider.notifier).signInWithGoogle();
+      final state = container.read(authViewModelProvider);
+
+      expect(state.isAuthenticated, isFalse);
+      expect(state.error, isNull);
+      expect(state.isLoading, isFalse);
+    });
+
+    test('erreur (ex. compte existant via un autre moyen de connexion) : message affichable',
+        () async {
+      final repo = _FakeAuthRepository()
+        ..googleSignInError =
+            FirebaseAuthException(code: 'account-exists-with-different-credential');
+      final container = _makeContainer(repo);
+      addTearDown(container.dispose);
+
+      await container.read(authViewModelProvider.notifier).signInWithGoogle();
+      final state = container.read(authViewModelProvider);
+
+      expect(state.isAuthenticated, isFalse);
+      expect(state.error,
+          'Un compte existe déjà avec cet email via une autre méthode de connexion.');
+    });
+  });
+
+  group('AuthViewModel — register', () {
+    test('succès : crée le profil avec role user et authentifie', () async {
+      final repo = _FakeAuthRepository()..credentialToReturn = _credentialFor('uid-new');
+      final container = _makeContainer(repo);
+      addTearDown(container.dispose);
+
+      await container.read(authViewModelProvider.notifier).register(
+            'bob@x.com',
+            'pass123',
+            _user(),
+          );
+      final state = container.read(authViewModelProvider);
+
+      expect(state.isAuthenticated, isTrue);
+      expect(state.user?.id, 'uid-new');
+      expect(state.user?.role, UserRole.user);
+      expect(state.user?.profilComplet, isFalse);
+      expect(repo.savedProfile?.id, 'uid-new');
+    });
+
+    test('email-already-in-use + compte réellement actif : reste en erreur, se déconnecte',
+        () async {
+      final repo = _FakeAuthRepository()
+        ..registerError = FirebaseAuthException(code: 'email-already-in-use')
+        ..credentialToReturn = _credentialFor('uid-existing')
+        ..currentUserQueue.add(_user(id: 'uid-existing')); // compte NON orphelin
+      final container = _makeContainer(repo);
+      addTearDown(container.dispose);
+
+      await container.read(authViewModelProvider.notifier).register(
+            'bob@x.com',
+            'pass123',
+            _user(),
+          );
+      final state = container.read(authViewModelProvider);
+
+      expect(repo.signOutCalled, isTrue);
+      expect(repo.orphanedAccountDeleted, isFalse);
+      expect(state.isAuthenticated, isFalse);
+      expect(state.error, 'Cet email est déjà utilisé');
+    });
+
+    test('email-already-in-use + compte orphelin : nettoie et recrée le profil', () async {
+      final repo = _FakeAuthRepository()
+        ..registerError = FirebaseAuthException(code: 'email-already-in-use')
+        ..credentialToReturn = _credentialFor('uid-recreated')
+        ..currentUserQueue.add(null); // getCurrentUser() après le 1er signIn : orphelin confirmé
+      final container = _makeContainer(repo);
+      addTearDown(container.dispose);
+
+      await container.read(authViewModelProvider.notifier).register(
+            'bob@x.com',
+            'pass123',
+            _user(),
+          );
+      final state = container.read(authViewModelProvider);
+
+      expect(repo.orphanedAccountDeleted, isTrue);
+      expect(state.isAuthenticated, isTrue);
+      expect(state.user?.id, 'uid-recreated');
+      expect(repo.savedProfile?.id, 'uid-recreated');
+    });
+  });
+
+  group('AuthViewModel — verifyOtp', () {
+    test('profil Firestore déjà existant : utilisé tel quel, aucun nouveau profil créé',
+        () async {
+      final existing = UserModel(
+        id: 'uid-otp-1',
+        nom: 'Déjà inscrit',
+        email: '',
+        telephone: '+221700000001',
+        pays: 'Sénégal',
+        region: '',
+        secteur: '',
+        dateInscription: DateTime(2024, 1, 1),
+        profilComplet: true,
+        role: UserRole.user,
+      );
+      final repo = _FakeAuthRepository()
+        ..credentialToReturn = _credentialFor('uid-otp-1')
+        ..currentUserQueue.add(existing);
+      final container = _makeContainer(repo);
+      addTearDown(container.dispose);
+
+      await container.read(authViewModelProvider.notifier).verifyOtp('123456');
+      final state = container.read(authViewModelProvider);
+
+      expect(state.isAuthenticated, isTrue);
+      expect(state.user, existing);
+      expect(repo.savedProfile, isNull, reason: 'profil existant : pas de ré-écriture');
+    });
+
+    // Bug réel trouvé en écrivant le scénario E2E T01 (J6.2) : sans ce repli,
+    // un nouvel inscrit par OTP se retrouvait avec isAuthenticated == true
+    // mais user == null pour toujours (DashboardScreen affiche alors un
+    // écran vide indéfiniment, faute de profil Firestore).
+    test('première connexion (aucun profil Firestore) : un profil minimal est créé',
+        () async {
+      final repo = _FakeAuthRepository()
+        ..credentialToReturn = _credentialFor('uid-otp-2')
+        ..currentUserQueue.add(null); // getCurrentUser() : aucun profil pour cet uid
+      final container = _makeContainer(repo);
+      addTearDown(container.dispose);
+
+      await container.read(authViewModelProvider.notifier).verifyOtp('123456');
+      final state = container.read(authViewModelProvider);
+
+      expect(state.isAuthenticated, isTrue);
+      expect(state.user, isNotNull);
+      expect(state.user?.id, 'uid-otp-2');
+      expect(state.user?.profilComplet, isFalse);
+      expect(repo.savedProfile?.id, 'uid-otp-2');
+    });
+
+    test('échec de vérification du code : erreur affichée, non authentifié', () async {
+      final repo = _FakeAuthRepository()..verifyOtpError = Exception('invalid-verification-code');
+      final container = _makeContainer(repo);
+      addTearDown(container.dispose);
+
+      await container.read(authViewModelProvider.notifier).verifyOtp('000000');
+      final state = container.read(authViewModelProvider);
+
+      expect(state.isAuthenticated, isFalse);
+      expect(state.error, isNotNull);
+    });
+  });
+
+  group('AuthViewModel — signOut / updateProfile', () {
+    test('signOut() réinitialise l\'état par défaut', () async {
+      final repo = _FakeAuthRepository()
+        ..credentialToReturn = _credentialFor('uid1')
+        ..currentUserQueue.add(_user());
+      final container = _makeContainer(repo);
+      addTearDown(container.dispose);
+
+      await container.read(authViewModelProvider.notifier).signIn('alice@x.com', 'pass');
+      await container.read(authViewModelProvider.notifier).signOut();
+      final state = container.read(authViewModelProvider);
+
+      expect(repo.signOutCalled, isTrue);
+      expect(state.isAuthenticated, isFalse);
+      expect(state.user, isNull);
+    });
+
+    test('updateProfile() sauvegarde et met à jour l\'utilisateur en état', () async {
+      final repo = _FakeAuthRepository();
+      final container = _makeContainer(repo);
+      addTearDown(container.dispose);
+
+      final updated = _user().copyWith(nom: 'Alice Modifiée');
+      await container.read(authViewModelProvider.notifier).updateProfile(updated);
+      final state = container.read(authViewModelProvider);
+
+      expect(repo.savedProfile?.nom, 'Alice Modifiée');
+      expect(state.user?.nom, 'Alice Modifiée');
+    });
+  });
+
+  group('AuthViewModel — changePassword', () {
+    test('succès : retourne null', () async {
+      final repo = _FakeAuthRepository();
+      final container = _makeContainer(repo);
+      addTearDown(container.dispose);
+
+      final result = await container
+          .read(authViewModelProvider.notifier)
+          .changePassword('ancien', 'nouveau123');
+
+      expect(result, isNull);
+      expect(container.read(authViewModelProvider).isLoading, isFalse);
+    });
+
+    test('mappe les erreurs (mot de passe actuel incorrect)', () async {
+      final repo = _FakeAuthRepository()
+        ..changePasswordError = FirebaseAuthException(code: 'wrong-password');
+      final container = _makeContainer(repo);
+      addTearDown(container.dispose);
+
+      final result = await container
+          .read(authViewModelProvider.notifier)
+          .changePassword('mauvais', 'nouveau123');
+
+      expect(result, 'Mot de passe actuel incorrect');
+      expect(container.read(authViewModelProvider).error, 'Mot de passe actuel incorrect');
+    });
+  });
+
+  group('AuthViewModel — deleteAccount', () {
+    test('succès : réinitialise l\'état et retourne null', () async {
+      final repo = _FakeAuthRepository();
+      final container = _makeContainer(repo);
+      addTearDown(container.dispose);
+
+      final result = await container.read(authViewModelProvider.notifier).deleteAccount('pass');
+
+      expect(result, isNull);
+      expect(repo.deleteAccountCalled, isTrue);
+      expect(container.read(authViewModelProvider).isAuthenticated, isFalse);
+    });
+
+    test('mot de passe incorrect : conserve l\'état non authentifié avec message', () async {
+      final repo = _FakeAuthRepository()
+        ..deleteAccountError = FirebaseAuthException(code: 'wrong-password');
+      final container = _makeContainer(repo);
+      addTearDown(container.dispose);
+
+      final result = await container.read(authViewModelProvider.notifier).deleteAccount('mauvais');
+
+      expect(result, 'Mot de passe incorrect');
+      expect(container.read(authViewModelProvider).error, 'Mot de passe incorrect');
+    });
+  });
+}

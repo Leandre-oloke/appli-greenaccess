@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'models/user_model.dart';
+import 'ui/motion/ga_page_transitions.dart';
 import 'viewmodels/auth_viewmodel.dart';
 import 'views/assurance/assurance_screen.dart';
+import 'views/assurance/carte_alea_screen.dart';
 import 'views/assurance/fiches_produit_screen.dart';
 import 'views/assurance/mes_contrats_screen.dart';
 import 'views/assurance/simulateur_assurance_screen.dart';
@@ -18,6 +20,7 @@ import 'views/auth/splash_screen.dart';
 import 'views/dashboard/dashboard_screen.dart';
 import 'views/financement/demande_form_screen.dart';
 import 'views/financement/financement_screen.dart';
+import 'views/financement/messagerie_partenaire_screen.dart';
 import 'views/financement/partenaires_screen.dart';
 import 'views/financement/paiement_screen.dart';
 import 'views/financement/remboursements_screen.dart';
@@ -41,6 +44,7 @@ import 'views/admin/admin_users_screen.dart';
 import 'views/admin/admin_demandes_screen.dart';
 import 'views/admin/admin_analytics_screen.dart';
 import 'views/admin/admin_partenaires_screen.dart';
+import 'views/admin/admin_zones_alea_screen.dart';
 import 'views/admin/admin_settings_screen.dart';
 import 'views/notifications/notifications_screen.dart';
 
@@ -67,6 +71,7 @@ class AppRoutes {
   static const simulateurAssurance = '/assurance/simulateur';
   static const souscription        = '/assurance/souscrire';
   static const mesContrats         = '/assurance/contrats';
+  static const carteAlea           = '/assurance/carte';
   static String sinistreForm(String contratId) => '/assurance/sinistre/$contratId';
   static const notifications       = '/dashboard/notifications';
 
@@ -74,6 +79,7 @@ class AppRoutes {
   static String quizPath(String id)          => '/formation/$id/quiz';
   static String statutDemandePath(String id) => '/financement/statut/$id';
   static String remboursementsPath(String id) => '/financement/statut/$id/remboursements';
+  static String messagerieDemandePath(String id) => '/financement/statut/$id/messages';
   static String paiementPath(String demandeId, String echeanceId) =>
       '/financement/statut/$demandeId/remboursements/$echeanceId/payer';
 
@@ -84,6 +90,7 @@ class AppRoutes {
   static const adminDemandes   = '/admin/demandes';
   static const adminContrats   = '/admin/contrats';
   static const adminPartenaires = '/admin/partenaires';
+  static const adminZonesAlea  = '/admin/zones-alea';
   static const adminAnalytics  = '/admin/analytics';
   static const adminSettings   = '/admin/settings';
   static const adminCourseNew  = '/admin/formations/new';
@@ -130,20 +137,12 @@ class _RouterNotifier extends ChangeNotifier {
   }
 }
 
-// ── Transition rapide ─────────────────────────────────────────────────────────
+// ── Transitions de page ───────────────────────────────────────────────────────
+// Fondu court par défaut (comportement historique), transitions expressives par
+// flux via le design system (`GaPageTransitions`).
 
-CustomTransitionPage<void> _fadePage(GoRouterState state, Widget child) {
-  return CustomTransitionPage<void>(
-    key: state.pageKey,
-    child: child,
-    transitionDuration: const Duration(milliseconds: 120),
-    reverseTransitionDuration: const Duration(milliseconds: 100),
-    transitionsBuilder: (_, animation, __, child) => FadeTransition(
-      opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
-      child: child,
-    ),
-  );
-}
+CustomTransitionPage<void> _fadePage(GoRouterState state, Widget child) =>
+    GaPageTransitions.fade(state, child);
 
 // ── Provider du router ────────────────────────────────────────────────────────
 
@@ -159,18 +158,18 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       // ── Écrans publics ─────────────────────────────────────────────────────
       GoRoute(path: AppRoutes.splash,     builder: (_, __) => const SplashScreen()),
-      GoRoute(path: AppRoutes.onboarding, pageBuilder: (_, s) => _fadePage(s, const OnboardingScreen())),
-      GoRoute(path: AppRoutes.login,      pageBuilder: (_, s) => _fadePage(s, const LoginScreen())),
-      GoRoute(path: AppRoutes.register,   pageBuilder: (_, s) => _fadePage(s, const RegisterScreen())),
-      GoRoute(path: AppRoutes.otp,        pageBuilder: (_, s) => _fadePage(s, const OTPScreen())),
+      GoRoute(path: AppRoutes.onboarding, pageBuilder: (_, s) => GaPageTransitions.fadeThrough(s, const OnboardingScreen())),
+      GoRoute(path: AppRoutes.login,      pageBuilder: (_, s) => GaPageTransitions.fadeThrough(s, const LoginScreen())),
+      GoRoute(path: AppRoutes.register,   pageBuilder: (_, s) => GaPageTransitions.fadeThrough(s, const RegisterScreen())),
+      GoRoute(path: AppRoutes.otp,        pageBuilder: (_, s) => GaPageTransitions.sharedAxisV(s, const OTPScreen())),
 
       // ── Scoring (hors shell — flow plein écran sans bottom nav) ────────────
       GoRoute(
         path: AppRoutes.scoringForm,
-        pageBuilder: (_, s) => _fadePage(s, const ScoringFormScreen()),
+        pageBuilder: (_, s) => GaPageTransitions.sharedAxisH(s, const ScoringFormScreen()),
         routes: [
-          GoRoute(path: 'result',  pageBuilder: (_, s) => _fadePage(s, const ScoreResultScreen())),
-          GoRoute(path: 'history', pageBuilder: (_, s) => _fadePage(s, const HistoriqueScoreScreen())),
+          GoRoute(path: 'result',  pageBuilder: (_, s) => GaPageTransitions.sharedAxisH(s, const ScoreResultScreen())),
+          GoRoute(path: 'history', pageBuilder: (_, s) => GaPageTransitions.sharedAxisH(s, const HistoriqueScoreScreen())),
         ],
       ),
 
@@ -239,6 +238,13 @@ final routerProvider = Provider<GoRouter>((ref) {
                   ),
                   routes: [
                     GoRoute(
+                      path: 'messages',
+                      pageBuilder: (_, s) => _fadePage(
+                        s,
+                        MessageriePartenaireScreen(demandeId: s.pathParameters['demandeId']!),
+                      ),
+                    ),
+                    GoRoute(
                       path: 'remboursements',
                       pageBuilder: (_, s) => _fadePage(
                         s,
@@ -281,6 +287,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                 GoRoute(path: 'simulateur', pageBuilder: (_, s) => _fadePage(s, const SimulateurAssuranceScreen())),
                 GoRoute(path: 'souscrire',  pageBuilder: (_, s) => _fadePage(s, const SouscriptionScreen())),
                 GoRoute(path: 'contrats',   pageBuilder: (_, s) => _fadePage(s, const MesContratsScreen())),
+                GoRoute(path: 'carte',      pageBuilder: (_, s) => _fadePage(s, const CarteAleaScreen())),
                 GoRoute(
                   path: 'sinistre/:contratId',
                   pageBuilder: (_, s) => _fadePage(
@@ -373,6 +380,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: AppRoutes.adminDemandes, pageBuilder: (_, s) => _fadePage(s, const AdminDemandesScreen())),
           GoRoute(path: AppRoutes.adminContrats,  pageBuilder: (_, s) => _fadePage(s, const AdminContratsScreen())),
           GoRoute(path: AppRoutes.adminPartenaires, pageBuilder: (_, s) => _fadePage(s, const AdminPartenairesScreen())),
+          GoRoute(path: AppRoutes.adminZonesAlea,  pageBuilder: (_, s) => _fadePage(s, const AdminZonesAleaScreen())),
           GoRoute(path: AppRoutes.adminAnalytics,  pageBuilder: (_, s) => _fadePage(s, const AdminAnalyticsScreen())),
           GoRoute(path: AppRoutes.adminSettings,   pageBuilder: (_, s) => _fadePage(s, const AdminSettingsScreen())),
         ],

@@ -333,6 +333,7 @@ class _PartenaireFormState extends ConsumerState<_PartenaireForm> {
                     ),
                   ),
                   IconButton(
+                    tooltip: 'Fermer',
                     icon: const Icon(Icons.close),
                     onPressed: () => Navigator.pop(context),
                   ),
@@ -345,7 +346,7 @@ class _PartenaireFormState extends ConsumerState<_PartenaireForm> {
 
               // Type — dropdown
               DropdownButtonFormField<String>(
-                value: _types.contains(_type.text) ? _type.text : null,
+                initialValue: _types.contains(_type.text) ? _type.text : null,
                 decoration: _inputDeco('Type'),
                 items: _types.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
                 onChanged: (v) => _type.text = v ?? '',

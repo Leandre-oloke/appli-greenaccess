@@ -34,7 +34,13 @@ service cloud.firestore {
     // ── Users ────────────────────────────────────────────────────────────────
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
-      allow create: if isOwner(userId);
+      // Un compte ne peut se créer qu'avec role: 'user' — l'auto-élévation
+      // (admin, partenaireFinanceur, partenaireAssureur) dès la création est
+      // bloquée ici, symétriquement à l'interdiction de modifier "role" via
+      // update ci-dessous. L'app envoie toujours role: 'user' à l'inscription ;
+      // seule une écriture Firestore hors app aurait pu exploiter l'absence
+      // de cette contrainte.
+      allow create: if isOwner(userId) && request.resource.data.role == 'user';
       allow update: if isOwner(userId) && !('role' in request.resource.data.diff(resource.data).affectedKeys())
                     || isAdmin();
       allow delete: if isOwner(userId) || isAdmin();
@@ -112,6 +118,25 @@ service cloud.firestore {
         allow write: if isAdmin()
                      || (isAuth() && get(/databases/$(database)/documents/demandes_financement/$(demandeId)).data.userId == request.auth.uid);
       }
+
+      // Sous-collection messages (J5.1-J5.2, restreinte en J5.5) — fil de
+      // discussion réservé aux deux parties de CETTE demande précise :
+      // l'emprunteur et le partenaire financeur qui lui est spécifiquement
+      // assigné (`partenaire_id`) — pas n'importe quel compte
+      // partenaireFinanceur, contrairement à la version initiale de J5.1-J5.2
+      // (isPartenaireFinanceur() sans vérifier l'assignation). Un admin garde
+      // un accès de supervision, comme sur le reste de l'app. Ajout seul : un
+      // message envoyé n'est ni modifié ni supprimé.
+      match /messages/{messageId} {
+        allow read: if isAdmin()
+                    || (isAuth() && get(/databases/$(database)/documents/demandes_financement/$(demandeId)).data.userId == request.auth.uid)
+                    || (isAuth() && get(/databases/$(database)/documents/demandes_financement/$(demandeId)).data.partenaire_id == request.auth.uid);
+        allow create: if (isAdmin()
+                      || (isAuth() && get(/databases/$(database)/documents/demandes_financement/$(demandeId)).data.userId == request.auth.uid)
+                      || (isAuth() && get(/databases/$(database)/documents/demandes_financement/$(demandeId)).data.partenaire_id == request.auth.uid))
+                      && request.resource.data.auteur_id == request.auth.uid;
+        allow update, delete: if false;
+      }
     }
 
     // ── Paiements ─────────────────────────────────────────────────────────────
@@ -162,6 +187,19 @@ service cloud.firestore {
     match /partenaires/{partenaireId} {
       allow read: if isAuth();
       allow write: if isAdmin();
+    }
+
+    // ── Journal d'audit (J3.7) ──────────────────────────────────────────────
+    // Ajout seul et inviolable : une fois un log créé, personne (même un
+    // admin) ne peut le modifier ou le supprimer — trace des actions
+    // critiques (soumission, souscription, paiement, suppression) fiable
+    // pour un audit de conformité (CDC §6).
+    match /audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAuth()
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.keys().hasAll(['userId', 'action', 'createdAt']);
+      allow update, delete: if false;
     }
   }
 }

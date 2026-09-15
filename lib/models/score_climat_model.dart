@@ -59,6 +59,8 @@ class ScoreClimatModel {
     required this.versionAlgo,
   });
 
+  /// Paliers CDC §3 : 0-29 Insuffisant · 30-59 Intermédiaire · 60-79 Bon ·
+  /// 80-100 Excellent (alignés sur `determineNiveau` côté Cloud Function).
   static NiveauScore niveauFromScore(double score) {
     if (score < 30) return NiveauScore.insuffisant;
     if (score < 60) return NiveauScore.intermediaire;

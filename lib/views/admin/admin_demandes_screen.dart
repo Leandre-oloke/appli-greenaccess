@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/demande_financement_model.dart';
+import '../../routes.dart';
 import '../../viewmodels/admin_viewmodel.dart';
 
 class AdminDemandesScreen extends ConsumerStatefulWidget {
@@ -220,6 +222,8 @@ class _AdminDemandesScreenState extends ConsumerState<AdminDemandesScreen> {
                             demande: demandes[i],
                             onApprouver: () => ref.read(adminViewModelProvider.notifier).approuverDemande(demandes[i].id),
                             onRejeter: () => _showRejetDialog(context, demandes[i].id),
+                            onMessagerie: () =>
+                                context.push(AppRoutes.messagerieDemandePath(demandes[i].id)),
                           ),
                         ),
                 ),
@@ -311,7 +315,13 @@ class _DemandeCard extends StatelessWidget {
   final DemandeFinancementModel demande;
   final VoidCallback onApprouver;
   final VoidCallback onRejeter;
-  const _DemandeCard({required this.demande, required this.onApprouver, required this.onRejeter});
+  final VoidCallback onMessagerie;
+  const _DemandeCard({
+    required this.demande,
+    required this.onApprouver,
+    required this.onRejeter,
+    required this.onMessagerie,
+  });
 
   static const _colors = {
     StatutDemande.brouillon: Colors.grey,
@@ -344,6 +354,12 @@ class _DemandeCard extends StatelessWidget {
           children: [
             Row(children: [
               Expanded(child: Text(demande.typeProjet, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15))),
+              IconButton(
+                icon: const Icon(Icons.chat_bubble_outline, size: 20),
+                tooltip: 'Messagerie',
+                onPressed: onMessagerie,
+                visualDensity: VisualDensity.compact,
+              ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),

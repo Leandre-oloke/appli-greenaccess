@@ -8,6 +8,7 @@ import 'package:greenaccess/models/demande_financement_model.dart';
 import 'package:greenaccess/models/lecon_model.dart';
 import 'package:greenaccess/models/user_model.dart';
 import 'package:greenaccess/repositories/admin_repository.dart';
+import 'package:greenaccess/repositories/cours_repository.dart';
 import 'package:greenaccess/viewmodels/admin_viewmodel.dart';
 
 // ── Fake AdminRepository ─────────────────────────────────────────────────────
@@ -91,10 +92,12 @@ DemandeFinancementModel _demande({
       alignementTaxonomie: 'Conforme',
     );
 
-ProviderContainer _makeContainer(_FakeAdminRepository repo) {
+ProviderContainer _makeContainer(_FakeAdminRepository repo, {CoursRepository? coursRepo}) {
   return ProviderContainer(
     overrides: [
-      adminViewModelProvider.overrideWith((ref) => AdminViewModel(repo)),
+      adminViewModelProvider.overrideWith(
+        (ref) => AdminViewModel(repo, coursRepo ?? CoursRepository(firestore: FakeFirebaseFirestore())),
+      ),
     ],
   );
 }
@@ -149,6 +152,29 @@ void main() {
       await container.read(adminViewModelProvider.notifier).approuverDemande('d1');
 
       expect(container.read(adminViewModelProvider).successMessage, 'Demande approuvée');
+    });
+
+    test('délivre le badge Financé Vert au demandeur (J5.15)', () async {
+      final repo = _FakeAdminRepository()
+        ..demandes = [_demande(userId: 'user_42')]
+        ..users = [];
+      final coursDb = FakeFirebaseFirestore();
+      final coursRepo = CoursRepository(firestore: coursDb);
+
+      final container = _makeContainer(repo, coursRepo: coursRepo);
+      addTearDown(container.dispose);
+
+      await container.read(adminViewModelProvider.notifier).loadDemandes();
+      await container.read(adminViewModelProvider.notifier).approuverDemande('d1');
+
+      final badgeSnap = await coursDb
+          .collection('users')
+          .doc('user_42')
+          .collection('badges')
+          .doc('finance_vert')
+          .get();
+      expect(badgeSnap.exists, isTrue);
+      expect(badgeSnap.data()?['type'], 'financement');
     });
   });
 

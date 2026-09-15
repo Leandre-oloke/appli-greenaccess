@@ -1,0 +1,3 @@
+# Scripts exécutés en conteneur Linux (Codespaces) : toujours en LF
+*.sh text eol=lf
+.devcontainer/** text eol=lf

@@ -1,0 +1,216 @@
+// Test widget de LoginScreen (J2.17) : validation de formulaire et affichage
+// des états d'erreur/chargement — sans Firebase réel (voir README.md §7 sur
+// pourquoi un flutter test classique ne peut pas parler à un émulateur).
+//
+// authViewModelProvider construit un vrai AuthRepository() par défaut, dont
+// le constructeur évalue FirebaseAuth.instance/FirebaseFirestore.instance
+// (throw sans Firebase.initializeApp()). On l'override donc par un
+// _FakeAuthViewModel qui étend AuthViewModel (requis par le typage du
+// provider) mais dont le AuthRepository sous-jacent ne touche jamais
+// FirebaseAuth : firestore fourni par fake_cloud_firestore, authStateChanges
+// (seul appel fait par AuthViewModel à la construction) surchargé pour ne
+// jamais toucher _auth, et Mock (mockito) implémentant FirebaseAuth juste
+// pour satisfaire le typage du constructeur — jamais réellement invoqué.
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:mockito/mockito.dart';
+
+import 'package:greenaccess/repositories/auth_repository.dart';
+import 'package:greenaccess/ui/ui.dart';
+import 'package:greenaccess/viewmodels/auth_viewmodel.dart';
+import 'package:greenaccess/views/auth/login_screen.dart';
+
+class _MockFirebaseAuth extends Mock implements FirebaseAuth {}
+
+class _FakeAuthRepository extends AuthRepository {
+  _FakeAuthRepository() : super(auth: _MockFirebaseAuth(), firestore: FakeFirebaseFirestore());
+
+  @override
+  Stream<User?> get authStateChanges => const Stream.empty();
+}
+
+class _FakeAuthViewModel extends AuthViewModel {
+  _FakeAuthViewModel({AuthState? initialState, this.onSignIn, this.onSignInWithGoogle})
+      : super(_FakeAuthRepository()) {
+    if (initialState != null) state = initialState;
+  }
+
+  final void Function(String email, String password)? onSignIn;
+  final VoidCallback? onSignInWithGoogle;
+
+  @override
+  Future<void> signIn(String email, String password) async {
+    onSignIn?.call(email, password);
+  }
+
+  @override
+  Future<void> signInWithGoogle() async {
+    onSignInWithGoogle?.call();
+  }
+}
+
+Widget _buildLogin(AuthViewModel Function(Ref ref) createViewModel) {
+  return ProviderScope(
+    overrides: [
+      authViewModelProvider.overrideWith(createViewModel),
+    ],
+    child: MaterialApp(
+      theme: AppTheme.light,
+      home: const LoginScreen(),
+    ),
+  );
+}
+
+void main() {
+  testWidgets('affiche les champs email/mot de passe et le bouton de connexion', (tester) async {
+    await tester.pumpWidget(_buildLogin((ref) => _FakeAuthViewModel()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Email'), findsOneWidget);
+    expect(find.text('Mot de passe'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Se connecter'), findsOneWidget);
+  });
+
+  testWidgets("affiche les erreurs de validation quand le formulaire est vide", (tester) async {
+    var signInCalled = false;
+    await tester.pumpWidget(_buildLogin(
+      (ref) => _FakeAuthViewModel(onSignIn: (_, __) => signInCalled = true),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Se connecter'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Email invalide'), findsOneWidget);
+    expect(find.text('Minimum 6 caractères'), findsOneWidget);
+    expect(signInCalled, isFalse);
+  });
+
+  testWidgets("affiche l'erreur email pour une adresse sans @, même avec un mot de passe valide", (tester) async {
+    var signInCalled = false;
+    await tester.pumpWidget(_buildLogin(
+      (ref) => _FakeAuthViewModel(onSignIn: (_, __) => signInCalled = true),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.widgetWithText(TextFormField, 'Email').first, 'pas-un-email');
+    await tester.enterText(find.byType(TextFormField).at(1), 'motdepasse123');
+    await tester.tap(find.widgetWithText(FilledButton, 'Se connecter'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Email invalide'), findsOneWidget);
+    expect(signInCalled, isFalse);
+  });
+
+  testWidgets('appelle signIn quand le formulaire est valide', (tester) async {
+    String? capturedEmail;
+    String? capturedPassword;
+    await tester.pumpWidget(_buildLogin(
+      (ref) => _FakeAuthViewModel(
+        onSignIn: (email, password) {
+          capturedEmail = email;
+          capturedPassword = password;
+        },
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextFormField).at(0), 'alice@greenaccess.test');
+    await tester.enterText(find.byType(TextFormField).at(1), 'motdepasse123');
+    await tester.tap(find.widgetWithText(FilledButton, 'Se connecter'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Email invalide'), findsNothing);
+    expect(find.text('Minimum 6 caractères'), findsNothing);
+    expect(capturedEmail, 'alice@greenaccess.test');
+    expect(capturedPassword, 'motdepasse123');
+  });
+
+  testWidgets("affiche le bandeau d'erreur quand authState.error est renseigné", (tester) async {
+    await tester.pumpWidget(_buildLogin(
+      (ref) => _FakeAuthViewModel(
+        initialState: const AuthState(error: 'Mot de passe incorrect'),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Mot de passe incorrect'), findsOneWidget);
+  });
+
+  testWidgets("affiche un indicateur de chargement et désactive le bouton quand authState.isLoading est vrai", (tester) async {
+    var signInCalled = false;
+    await tester.pumpWidget(_buildLogin(
+      (ref) => _FakeAuthViewModel(
+        initialState: const AuthState(isLoading: true),
+        onSignIn: (_, __) => signInCalled = true,
+      ),
+    ));
+    // pas de pumpAndSettle() ici : le CircularProgressIndicator du bouton en
+    // chargement anime indéfiniment (spinner indéterminé), pumpAndSettle()
+    // attendrait la fin d'une animation qui ne se termine jamais. pump(Duration.zero)
+    // (et non pump() nu) pour laisser flutter_animate exécuter les timers à
+    // durée nulle qu'il programme pour (re)démarrer la cascade d'entrée
+    // (gaStagger) — sinon le framework de test les signale comme "encore en
+    // attente" à la fin du test.
+    await tester.pump(Duration.zero);
+
+    // Les deux boutons de connexion (email + Google) partagent le même état
+    // isLoading et affichent chacun leur propre spinner pendant le chargement.
+    expect(find.byType(CircularProgressIndicator), findsNWidgets(2));
+    expect(find.text('Se connecter'), findsNothing);
+    expect(find.text('Continuer avec Google'), findsNothing);
+
+    // Le bouton est désactivé pendant le chargement (onPressed: null).
+    final button = tester.widget<FilledButton>(find.byType(FilledButton));
+    expect(button.onPressed, isNull);
+    // find.byType(OutlinedButton) est ambigu depuis l'ajout du bouton « numéro
+    // de téléphone » (J6.2) — même style GaSecondaryButton.outlined que le
+    // bouton Google. Ciblé ici par position (.first, Google est le premier
+    // dans l'arbre) plutôt que par texte : pendant le chargement, le label
+    // « Continuer avec Google » est remplacé par son propre spinner et
+    // n'existe donc plus (voir l'assertion juste au-dessus).
+    final googleButton = tester.widget<OutlinedButton>(find.byType(OutlinedButton).first);
+    expect(googleButton.onPressed, isNull);
+
+    await tester.tap(find.byType(FilledButton), warnIfMissed: false);
+    await tester.pump(Duration.zero);
+    expect(signInCalled, isFalse);
+  });
+
+  testWidgets('affiche le bouton « Continuer avec Google » (J3.3)', (tester) async {
+    await tester.pumpWidget(_buildLogin((ref) => _FakeAuthViewModel()));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(OutlinedButton, 'Continuer avec Google'), findsOneWidget);
+  });
+
+  testWidgets('affiche le bouton « Continuer avec un numéro de téléphone » (J6.2, entrée vers OTPScreen)',
+      (tester) async {
+    await tester.pumpWidget(_buildLogin((ref) => _FakeAuthViewModel()));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.widgetWithText(OutlinedButton, 'Continuer avec un numéro de téléphone'),
+      findsOneWidget,
+    );
+    // context.push(AppRoutes.otp) (go_router) n'est pas testable ici sans
+    // routeur réel — même limite documentée pour les autres écrans de ce
+    // dossier.
+  });
+
+  testWidgets('appelle signInWithGoogle() au tap sur « Continuer avec Google »', (tester) async {
+    var googleSignInCalled = false;
+    await tester.pumpWidget(_buildLogin(
+      (ref) => _FakeAuthViewModel(onSignInWithGoogle: () => googleSignInCalled = true),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Continuer avec Google'));
+    await tester.pumpAndSettle();
+
+    expect(googleSignInCalled, isTrue);
+  });
+}

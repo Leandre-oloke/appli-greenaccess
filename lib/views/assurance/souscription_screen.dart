@@ -238,7 +238,7 @@ class _StepZone extends StatelessWidget {
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         const SizedBox(height: 20),
         DropdownButtonFormField<String>(
-          value: zone,
+          initialValue: zone,
           decoration: const InputDecoration(labelText: 'Zone géographique', prefixIcon: Icon(Icons.location_on_outlined)),
           items: zones.map((z) => DropdownMenuItem(value: z, child: Text(z))).toList(),
           onChanged: onZone,

@@ -4,4 +4,13 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- Trafic HTTP en clair (Firebase Emulator Suite, dart define
+         USE_EMULATOR egal true, voir lib/main.dart) : necessaire pour les
+         E2E Patrol contre un emulateur Android reel (J6.1-J6.3, CDC 7.2),
+         l'app y joignant l'hote via 10.0.2.2 en HTTP. Fusionne uniquement
+         dans le build debug par le manifest merger de Gradle, jamais en
+         release. (Un double tiret est interdit dans un commentaire XML :
+         evite ici, cause du premier echec de parsing en CI.) -->
+    <application android:usesCleartextTraffic="true"></application>
 </manifest>

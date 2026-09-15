@@ -85,23 +85,68 @@ class ContratAssuranceModel {
   }
 }
 
+class SinistreModel {
+  final String id;
+  final String userId;
+  final String contratId;
+  final String typeSinistre;
+  final String description;
+  final DateTime dateSinistre;
+  final List<String> photoUrls;
+  final String statut;
+  final DateTime? createdAt;
+
+  const SinistreModel({
+    required this.id,
+    required this.userId,
+    required this.contratId,
+    required this.typeSinistre,
+    required this.description,
+    required this.dateSinistre,
+    this.photoUrls = const [],
+    required this.statut,
+    this.createdAt,
+  });
+
+  factory SinistreModel.fromFirestore(Map<String, dynamic> data, String id) {
+    return SinistreModel(
+      id: id,
+      userId: data['userId'] ?? '',
+      contratId: data['contratId'] ?? '',
+      typeSinistre: data['typeSinistre'] ?? '',
+      description: data['description'] ?? '',
+      dateSinistre: (data['dateSinistre'] as dynamic).toDate(),
+      photoUrls: List<String>.from(data['photoUrls'] ?? []),
+      statut: data['statut'] ?? 'en_attente',
+      createdAt: data['createdAt'] != null ? (data['createdAt'] as dynamic).toDate() : null,
+    );
+  }
+}
+
 class SimulationAssuranceResult {
   final ProduitAssuranceModel produitRecommande;
   final double primeEstimee;
   final double indemnisationEstimee;
   final String raisonRecommandation;
 
+  /// Réduction appliquée grâce au Score Climat (J4.11-J4.12, CDC §4.1), en
+  /// pourcentage entier (0 si aucun score fourni ou score insuffisant — la
+  /// règle n'est qu'incitative, jamais une majoration).
+  final int remiseScorePct;
+
   const SimulationAssuranceResult({
     required this.produitRecommande,
     required this.primeEstimee,
     required this.indemnisationEstimee,
     required this.raisonRecommandation,
+    this.remiseScorePct = 0,
   });
 }
 
 class ZoneAleaModel {
   final String id;
   final String nom;
+  final String pays;
   final String typeAlea; // secheresse, inondation, chaleur
   final double latitude;
   final double longitude;
@@ -111,6 +156,7 @@ class ZoneAleaModel {
   const ZoneAleaModel({
     required this.id,
     required this.nom,
+    this.pays = '',
     required this.typeAlea,
     required this.latitude,
     required this.longitude,
@@ -122,6 +168,7 @@ class ZoneAleaModel {
     return ZoneAleaModel(
       id: id,
       nom: data['nom'] ?? '',
+      pays: data['pays'] ?? '',
       typeAlea: data['type_alea'] ?? '',
       latitude: (data['latitude'] ?? 0).toDouble(),
       longitude: (data['longitude'] ?? 0).toDouble(),
@@ -129,4 +176,22 @@ class ZoneAleaModel {
       niveauRisque: data['niveau_risque'] ?? 'faible',
     );
   }
+
+  /// Jeu de données bundlé (`assets/data/zones_alea.json`, Phase 4) — même
+  /// forme de champs que Firestore, avec un `id` inclus dans chaque entrée
+  /// plutôt que déduit d'un id de document.
+  factory ZoneAleaModel.fromJson(Map<String, dynamic> json) {
+    return ZoneAleaModel.fromFirestore(json, json['id'] ?? '');
+  }
+
+  /// Écriture Firestore (J4.15 — import/gestion admin des zones).
+  Map<String, dynamic> toFirestore() => {
+        'nom': nom,
+        'pays': pays,
+        'type_alea': typeAlea,
+        'latitude': latitude,
+        'longitude': longitude,
+        'rayon': rayon,
+        'niveau_risque': niveauRisque,
+      };
 }

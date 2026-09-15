@@ -2,15 +2,36 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../models/user_model.dart';
+import 'audit_repository.dart';
+
+/// Web uniquement : identifiant du client OAuth Google (console Firebase →
+/// Authentication → Sign-in method → Google → "Web SDK configuration", tâche
+/// J3.1). Sur Android/iOS, ce paramètre est ignoré : GoogleSignIn utilise la
+/// configuration native (google-services.json / GoogleService-Info.plist +
+/// empreinte SHA-1/SHA-256 enregistrée dans la console Firebase).
+///   flutter run --dart-define=GOOGLE_WEB_CLIENT_ID=xxxxx.apps.googleusercontent.com
+const String _googleWebClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
 
 class AuthRepository {
   final FirebaseAuth _auth;
   final FirebaseFirestore _firestore;
+  final GoogleSignIn _googleSignIn;
+  final AuditRepository _audit;
 
-  AuthRepository({FirebaseAuth? auth, FirebaseFirestore? firestore})
-      : _auth = auth ?? FirebaseAuth.instance,
-        _firestore = firestore ?? FirebaseFirestore.instance;
+  AuthRepository({
+    FirebaseAuth? auth,
+    FirebaseFirestore? firestore,
+    GoogleSignIn? googleSignIn,
+    AuditRepository? audit,
+  })  : _auth = auth ?? FirebaseAuth.instance,
+        _firestore = firestore ?? FirebaseFirestore.instance,
+        _googleSignIn = googleSignIn ??
+            GoogleSignIn(
+              clientId: _googleWebClientId.isEmpty ? null : _googleWebClientId,
+            ),
+        _audit = audit ?? AuditRepository(firestore: firestore);
 
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
@@ -22,7 +43,25 @@ class AuthRepository {
     return _auth.createUserWithEmailAndPassword(email: email, password: password);
   }
 
-  Future<void> signOut() => _auth.signOut();
+  /// Retourne `null` si l'utilisateur ferme le sélecteur de compte Google sans
+  /// choisir de compte (annulation, pas une erreur) — sinon les identifiants
+  /// Firebase de la connexion réussie.
+  Future<UserCredential?> signInWithGoogle() async {
+    final googleUser = await _googleSignIn.signIn();
+    if (googleUser == null) return null;
+
+    final googleAuth = await googleUser.authentication;
+    final credential = GoogleAuthProvider.credential(
+      accessToken: googleAuth.accessToken,
+      idToken: googleAuth.idToken,
+    );
+    return _auth.signInWithCredential(credential);
+  }
+
+  Future<void> signOut() async {
+    await _googleSignIn.signOut();
+    await _auth.signOut();
+  }
 
   String? _verificationId;
 
@@ -103,6 +142,11 @@ class AuthRepository {
     // Suppression des données Firestore (user doc + sous-collections).
     final uid = user.uid;
     final userRef = _firestore.collection('users').doc(uid);
+
+    // Le log doit être écrit AVANT user.delete() : la règle Firestore exige
+    // request.auth.uid == userId, or le token d'auth devient invalide dès
+    // que le compte est supprimé.
+    await _audit.logAction(userId: uid, action: 'compte_supprime');
 
     final batch = _firestore.batch();
     batch.delete(userRef);

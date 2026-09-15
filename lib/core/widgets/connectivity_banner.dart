@@ -73,9 +73,14 @@ class _ConnectivityBannerState extends State<ConnectivityBanner>
                 color: Colors.transparent,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFB71C1C),
-                    boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, -2))],
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.error,
+                    boxShadow: const [
+                      BoxShadow(
+                          color: Colors.black26,
+                          blurRadius: 8,
+                          offset: Offset(0, -2)),
+                    ],
                   ),
                   child: const Row(
                     mainAxisAlignment: MainAxisAlignment.center,

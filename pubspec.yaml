@@ -17,6 +17,9 @@ dependencies:
   firebase_storage: ^12.3.2
   cloud_functions: ^5.1.3
 
+  # Connexion Google (J3.2) — second moyen d'authentification, CDC §6
+  google_sign_in: ^6.2.1
+
   # State Management (Riverpod)
   flutter_riverpod: ^2.5.1
 
@@ -26,6 +29,17 @@ dependencies:
   # UI Components
   fl_chart: ^0.69.0
   percent_indicator: ^4.2.3
+
+  # Design system — refonte visuelle « Organic Fintech »
+  flutter_animate: ^4.5.0      # entrées en cascade, micro-animations, shimmer
+  animations: ^2.0.11          # transitions shared-axis / fade-through (équipe Flutter)
+  lottie: ^3.1.3               # micro-délices (confettis badge/score, états vides)
+  flutter_svg: ^2.0.10         # illustrations vectorielles
+  easy_stepper: ^0.8.5+1       # rail d'étapes du GaStepper
+
+  # Cartographie — déclaré maintenant, importé en Phase 4 (module Assurance)
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
 
   # Local Storage
   shared_preferences: ^2.3.2
@@ -37,15 +51,24 @@ dependencies:
   geolocator: ^13.0.1
   equatable: ^2.0.5
   firebase_messaging: ^15.0.0
+  # Traces de performance des écrans/opérations clés (J6.6, CDC §7.1 · T10)
+  firebase_performance: ^0.10.0
   image_picker: ^1.1.2
   pdf: ^3.10.8
   printing: ^5.13.1
   connectivity_plus: ^6.0.0
 
+  # Export RGPD (J3.4-J3.5, CDC §5 · T11)
+  csv: ^6.0.0             # sérialisation CSV (échappement virgules/guillemets/accents)
+  share_plus: ^10.1.4      # partage/téléchargement cross-plateforme du fichier CSV
+                           # (le PDF réutilise Printing.sharePdf, déjà en place)
+
   cupertino_icons: ^1.0.8
 
 dev_dependencies:
   flutter_test:
+    sdk: flutter
+  integration_test:
     sdk: flutter
   flutter_lints: ^5.0.0
   mockito: ^5.4.4
@@ -55,6 +78,23 @@ dev_dependencies:
   riverpod_annotation: ^2.3.5
   riverpod_generator: ^2.4.3
   fake_cloud_firestore: ^3.1.0
+  geolocator_platform_interface: ^4.2.4 # fake GeolocatorPlatform pour CarteAleaScreen (Phase 4)
+
+  # E2E (J6.1, CDC §7.1) — Patrol, sur un émulateur Android réel (voir
+  # patrol_test/ et .github/workflows/e2e.yml). Nécessite `patrol_cli`
+  # (`flutter pub global activate patrol_cli`), absent de ce Codespace
+  # (aucun émulateur/adb disponible ici, voir README.md §7) — exécutable en
+  # CI (Android hardware-accelerated sur ubuntu-latest) et en local sur un
+  # poste avec Android Studio/un émulateur.
+  patrol: ^4.9.0
+  patrol_finders: ^3.6.0
+
+patrol:
+  app_name: GreenAccess
+  android:
+    package_name: com.greenaccess.greenaccess
+  ios:
+    bundle_id: com.greenaccess.greenaccess
 
 flutter:
   uses-material-design: true
@@ -63,3 +103,11 @@ flutter:
     - assets/icons/
     - assets/animations/
     - assets/data/
+  fonts:
+    # Polices variables (axe wght) — Flutter résout les graisses via l'axe.
+    - family: Sora
+      fonts:
+        - asset: assets/fonts/Sora.ttf
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter.ttf

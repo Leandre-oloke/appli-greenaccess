@@ -182,6 +182,7 @@ class _UserCard extends StatelessWidget {
                   )
                 else
                   IconButton(
+                    tooltip: 'Supprimer',
                     icon: const Icon(Icons.delete_outline, size: 18),
                     color: AppColors.error,
                     padding: EdgeInsets.zero,

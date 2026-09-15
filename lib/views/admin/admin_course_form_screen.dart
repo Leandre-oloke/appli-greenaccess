@@ -105,7 +105,10 @@ class _AdminCourseFormScreenState extends ConsumerState<AdminCourseFormScreen> {
         title: Text(_isNew ? 'Nouveau cours' : 'Modifier le cours'),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
-        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.adminFormations)),
+        leading: IconButton(
+            tooltip: 'Retour',
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => context.go(AppRoutes.adminFormations)),
       ),
       body: Form(
         key: _formKey,
@@ -121,7 +124,7 @@ class _AdminCourseFormScreenState extends ConsumerState<AdminCourseFormScreen> {
             // ── Type et niveau ───────────────────────────────────────────────
             _section('Type de contenu'),
             DropdownButtonFormField<CourseType>(
-              value: _type,
+              initialValue: _type,
               decoration: _decor('Type *'),
               items: CourseType.values.map((t) => DropdownMenuItem(
                 value: t,
@@ -131,7 +134,7 @@ class _AdminCourseFormScreenState extends ConsumerState<AdminCourseFormScreen> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<int>(
-              value: _niveau,
+              initialValue: _niveau,
               decoration: _decor('Niveau *'),
               items: const [
                 DropdownMenuItem(value: 0, child: Text('Débutant')),
@@ -159,7 +162,10 @@ class _AdminCourseFormScreenState extends ConsumerState<AdminCourseFormScreen> {
             Row(children: [
               Expanded(child: TextFormField(controller: _objectifCtrl, decoration: _decor('Ajouter un objectif'))),
               const SizedBox(width: 8),
-              IconButton(icon: const Icon(Icons.add_circle, color: AppColors.primary), onPressed: _addObjectif),
+              IconButton(
+                  tooltip: 'Ajouter',
+                  icon: const Icon(Icons.add_circle, color: AppColors.primary),
+                  onPressed: _addObjectif),
             ]),
             const SizedBox(height: 8),
             ..._objectifs.asMap().entries.map((e) => Chip(

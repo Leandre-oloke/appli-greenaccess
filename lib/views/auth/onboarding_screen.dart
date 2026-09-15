@@ -1,8 +1,11 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../../routes.dart';
+import '../../ui/ui.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -13,38 +16,44 @@ class OnboardingScreen extends StatefulWidget {
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _ctrl = PageController();
-  int _page = 0;
+  double _page = 0;
 
   static const _slides = [
     _Slide(
-      icon: Icons.account_balance_outlined,
-      accentColor: Color(0xFF2D7D46),
+      icon: Icons.savings_rounded,
       title: 'Finance verte pour l\'Afrique',
-      body: 'Accédez à des micro-crédits et investissements verts adaptés à votre activité. '
-          'Score Climat ESG pour valider votre éligibilité et obtenir les meilleures conditions.',
+      body:
+          'Micro-crédits et investissements verts adaptés à votre activité. Votre '
+          'Score Climat ESG valide votre éligibilité et vos conditions.',
     ),
     _Slide(
-      icon: Icons.school_outlined,
-      accentColor: Color(0xFF1565C0),
+      icon: Icons.school_rounded,
       title: 'Éducation climatique gamifiée',
-      body: 'Suivez des formations courtes sur la résilience climatique, '
-          'l\'agroforesterie, l\'énergie solaire. Gagnez des badges certifiés OpenBadge et '
-          'améliorez votre score ESG.',
+      body:
+          'Formations courtes sur la résilience, l\'agroforesterie, le solaire. '
+          'Gagnez des badges certifiés et améliorez votre score.',
     ),
     _Slide(
-      icon: Icons.shield_outlined,
-      accentColor: Color(0xFF6A1B9A),
+      icon: Icons.shield_moon_rounded,
       title: 'Assurance climatique inclusive',
-      body: 'Protégez votre activité contre les aléas climatiques (sécheresse, inondation). '
-          'Indices paramétriques, déclenchement automatique, couverture adaptée '
-          'aux petits producteurs d\'Afrique de l\'Ouest.',
+      body:
+          'Protégez votre activité contre la sécheresse et l\'inondation. Indices '
+          'paramétriques, déclenchement automatique, couverture pour petits producteurs.',
     ),
   ];
+
+  int get _current => _page.round();
 
   Future<void> _finish() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('onboarding_shown', true);
     if (mounted) context.go(AppRoutes.login);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl.addListener(() => setState(() => _page = _ctrl.page ?? 0));
   }
 
   @override
@@ -55,102 +64,84 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Barre de statut transparente pour laisser l'image remonter sous la notch.
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
+    final isLast = _current == _slides.length - 1;
 
     return Scaffold(
       backgroundColor: Colors.black,
-      extendBodyBehindAppBar: true,
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // ── Arrière-plan : image commune aux 3 slides ──────────────────────
-          Image.asset(
-            'assets/images/onboarding_bg.jpg',
-            fit: BoxFit.cover,
+          // Parallax de l'image de fond
+          Transform.scale(
+            scale: 1.12,
+            child: Transform.translate(
+              offset: Offset(-_page * 24, 0),
+              child: Image.asset('assets/images/onboarding_bg.jpg',
+                  fit: BoxFit.cover),
+            ),
           ),
-
-          // ── Overlay dégradé : renforce la lisibilité du contenu en bas ────
-          Container(
-            decoration: const BoxDecoration(
+          const DecoratedBox(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                stops: [0.0, 0.35, 0.70, 1.0],
+                stops: [0.0, 0.4, 0.72, 1.0],
                 colors: [
-                  Color(0x33000000), // légèrement sombre en haut
+                  Color(0x22000000),
                   Color(0x55000000),
-                  Color(0xBB000000), // plus dense au milieu-bas
-                  Color(0xF0000000), // presque opaque tout en bas
+                  Color(0xCC0F1A14),
+                  Color(0xF20F1A14),
                 ],
               ),
             ),
+            child: SizedBox.expand(),
           ),
-
-          // ── Contenu ────────────────────────────────────────────────────────
           SafeArea(
             child: Column(
               children: [
-                // Bouton Passer
                 Align(
                   alignment: Alignment.topRight,
                   child: TextButton(
                     onPressed: _finish,
-                    child: const Text(
-                      'Passer',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
+                    child: Text('Passer',
+                        style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.75),
+                            fontWeight: FontWeight.w600)),
                   ),
                 ),
-
-                // Slides
                 Expanded(
                   child: PageView.builder(
                     controller: _ctrl,
                     itemCount: _slides.length,
-                    onPageChanged: (i) => setState(() => _page = i),
                     itemBuilder: (_, i) => _SlideView(slide: _slides[i]),
                   ),
                 ),
-
-                // Points de pagination
-                _Dots(count: _slides.length, current: _page),
-                const SizedBox(height: 28),
-
-                // Bouton principal
+                GaDotsIndicator(
+                  count: _slides.length,
+                  index: _current,
+                  activeColor: Colors.white,
+                  inactiveColor: Colors.white.withValues(alpha: 0.3),
+                ),
+                const SizedBox(height: GaSpacing.xl),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
-                  child: ElevatedButton(
+                  padding: const EdgeInsets.symmetric(horizontal: GaSpacing.xl),
+                  child: GaPrimaryButton(
+                    label: isLast ? 'Commencer' : 'Suivant',
+                    icon: isLast ? Icons.arrow_forward_rounded : null,
                     onPressed: () {
-                      if (_page < _slides.length - 1) {
-                        _ctrl.nextPage(
-                          duration: const Duration(milliseconds: 350),
-                          curve: Curves.easeInOut,
-                        );
-                      } else {
+                      if (isLast) {
                         _finish();
+                      } else {
+                        _ctrl.nextPage(
+                          duration: GaMotion.slow,
+                          curve: GaMotion.emphasized,
+                        );
                       }
                     },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _slides[_page].accentColor,
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size(double.infinity, 52),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: Text(
-                      _page == _slides.length - 1 ? 'Commencer' : 'Suivant',
-                      style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w600),
-                    ),
                   ),
                 ),
-                const SizedBox(height: 36),
+                const SizedBox(height: GaSpacing.xxl),
               ],
             ),
           ),
@@ -162,15 +153,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
 class _Slide {
   final IconData icon;
-  final Color accentColor;
   final String title;
   final String body;
-  const _Slide({
-    required this.icon,
-    required this.accentColor,
-    required this.title,
-    required this.body,
-  });
+  const _Slide({required this.icon, required this.title, required this.body});
 }
 
 class _SlideView extends StatelessWidget {
@@ -179,77 +164,46 @@ class _SlideView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = GaColors.of(Theme.of(context).brightness);
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
+      padding: const EdgeInsets.symmetric(horizontal: GaSpacing.xl),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Icône avec halo coloré
           Container(
-            width: 72,
-            height: 72,
+            width: 76,
+            height: 76,
             decoration: BoxDecoration(
-              color: slide.accentColor.withValues(alpha: 0.25),
-              borderRadius: BorderRadius.circular(20),
+              color: tokens.forestBright.withValues(alpha: 0.22),
+              borderRadius: GaRadii.brLg,
               border: Border.all(
-                color: slide.accentColor.withValues(alpha: 0.6),
-                width: 1.5,
-              ),
+                  color: tokens.forestBright.withValues(alpha: 0.65), width: 1.5),
             ),
-            child: Icon(slide.icon, size: 36, color: Colors.white),
-          ),
-          const SizedBox(height: 20),
-
-          // Titre
+            child: Icon(slide.icon, size: 38, color: Colors.white),
+          ).animate().fadeIn(duration: GaMotion.base).scale(
+                begin: const Offset(0.8, 0.8),
+                end: const Offset(1, 1),
+                curve: GaMotion.emphasized,
+              ),
+          const SizedBox(height: GaSpacing.lg),
           Text(
             slide.title,
-            style: const TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-              height: 1.25,
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // Corps
+            style: Theme.of(context)
+                .textTheme
+                .displaySmall
+                ?.copyWith(color: Colors.white, height: 1.2),
+          ).animate().fadeIn(delay: 80.ms).slideY(begin: 0.2, end: 0),
+          const SizedBox(height: GaSpacing.md),
           Text(
             slide.body,
-            style: TextStyle(
-              fontSize: 15,
-              color: Colors.white.withValues(alpha: 0.80),
-              height: 1.55,
-            ),
-          ),
-          const SizedBox(height: 32),
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: Colors.white.withValues(alpha: 0.82),
+                  height: 1.55,
+                ),
+          ).animate().fadeIn(delay: 160.ms),
+          const SizedBox(height: GaSpacing.xxl),
         ],
-      ),
-    );
-  }
-}
-
-class _Dots extends StatelessWidget {
-  final int count;
-  final int current;
-  const _Dots({required this.count, required this.current});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(
-        count,
-        (i) => AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
-          margin: const EdgeInsets.symmetric(horizontal: 4),
-          width: i == current ? 24 : 8,
-          height: 8,
-          decoration: BoxDecoration(
-            color: i == current ? Colors.white : Colors.white30,
-            borderRadius: BorderRadius.circular(4),
-          ),
-        ),
       ),
     );
   }

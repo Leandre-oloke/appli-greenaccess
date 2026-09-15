@@ -4,8 +4,10 @@ import 'package:go_router/go_router.dart';
 import '../../core/constants/app_colors.dart';
 import '../../routes.dart';
 import '../../models/demande_financement_model.dart';
+import '../../utils/eligibilite_financement.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 import '../../viewmodels/financement_viewmodel.dart';
+import '../../viewmodels/formation_viewmodel.dart';
 import '../../viewmodels/scoring_viewmodel.dart';
 
 class FinancementScreen extends ConsumerStatefulWidget {
@@ -24,6 +26,7 @@ class _FinancementScreenState extends ConsumerState<FinancementScreen> {
       if (uid.isEmpty) return;
       ref.read(financementViewModelProvider(uid).notifier).loadDemandes();
       ref.read(scoringViewModelProvider(uid).notifier).loadLatestScore();
+      ref.read(formationViewModelProvider(uid).notifier).loadCourses();
     });
   }
 
@@ -32,8 +35,18 @@ class _FinancementScreenState extends ConsumerState<FinancementScreen> {
     final uid = ref.watch(authViewModelProvider).user?.id ?? '';
     final finState = ref.watch(financementViewModelProvider(uid));
     final scoreState = ref.watch(scoringViewModelProvider(uid));
+    final aBadgeAssureClimat = ref
+        .watch(formationViewModelProvider(uid))
+        .badges
+        .any((b) => b.id == badgeIdAssureClimat);
 
-    final score = scoreState.currentScore?.scoreTotal ?? 0;
+    // Règle 4.1 (CDC §4.1, J5.14) : le badge Assuré Climat bonifie de +10 pts
+    // le score d'éligibilité au financement — incitation croisée entre les
+    // modules Assurance et Financement.
+    final score = scoreEligibiliteFinancement(
+      scoreState.currentScore?.scoreTotal ?? 0,
+      aBadgeAssureClimat: aBadgeAssureClimat,
+    );
     final eligible = score >= 60;
 
     return Scaffold(
@@ -54,7 +67,7 @@ class _FinancementScreenState extends ConsumerState<FinancementScreen> {
                 background: Container(
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Color(0xFF2D7D46), Color(0xFF1B5E34)],
+                      colors: [Color(0xFF1F5C3D), Color(0xFF2E7D52)],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -71,7 +84,11 @@ class _FinancementScreenState extends ConsumerState<FinancementScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _EligibilityCard(score: score, eligible: eligible),
+                    _EligibilityCard(
+                      score: score,
+                      eligible: eligible,
+                      bonusAssureClimat: aBadgeAssureClimat,
+                    ),
                     const SizedBox(height: 16),
                     _QuickActionsRow(eligible: eligible),
                     const SizedBox(height: 20),
@@ -110,7 +127,12 @@ class _FinancementScreenState extends ConsumerState<FinancementScreen> {
 class _EligibilityCard extends StatelessWidget {
   final double score;
   final bool eligible;
-  const _EligibilityCard({required this.score, required this.eligible});
+  final bool bonusAssureClimat;
+  const _EligibilityCard({
+    required this.score,
+    required this.eligible,
+    this.bonusAssureClimat = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -145,6 +167,15 @@ class _EligibilityCard extends StatelessWidget {
                         : 'Score: ${score.round()}/100 — Minimum requis: 60/100',
                     style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
                   ),
+                  if (bonusAssureClimat)
+                    const Text(
+                      '+10 pts grâce au badge Assuré Climat 🌿',
+                      style: TextStyle(
+                        color: AppColors.success,
+                        fontSize: 11,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
                 ],
               ),
             ),

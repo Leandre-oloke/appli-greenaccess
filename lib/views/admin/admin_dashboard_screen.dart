@@ -46,6 +46,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
             onPressed: () => context.go(AppRoutes.dashboard),
           ),
           IconButton(
+            tooltip: 'Actualiser',
             icon: const Icon(Icons.refresh),
             onPressed: () => ref.read(adminViewModelProvider.notifier).loadDashboard(),
           ),

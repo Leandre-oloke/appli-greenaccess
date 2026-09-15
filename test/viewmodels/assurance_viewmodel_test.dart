@@ -279,6 +279,67 @@ void main() {
       expect(state.simulation!.primeEstimee, greaterThan(0));
       // indemnisation = valeur × 0.8
       expect(state.simulation!.indemnisationEstimee, closeTo(1600000, 1));
+      // Aucun score fourni : pas de réduction.
+      expect(state.simulation!.remiseScorePct, 0);
+    });
+
+    // ── Score Climat comme facteur de prime (J4.11-J4.12, CDC §4.1) ────────
+    group('remise Score Climat', () {
+      void simuler(ProviderContainer container, {double? scoreClimat}) {
+        container.read(assuranceViewModelProvider('user_test').notifier).simulerPrime(
+              zone: 'Sénégal',
+              typeAlea: 'secheresse',
+              superficieCultivee: 2.0, // facteur neutre (2/2 = 1.0)
+              valeurAssurable: 1000000,
+              scoreClimat: scoreClimat,
+            );
+      }
+
+      test('aucun score fourni : pas de réduction, prime pleine', () {
+        final container = _makeContainer(_FakeAssuranceRepository());
+        addTearDown(container.dispose);
+        simuler(container);
+        final state = container.read(assuranceViewModelProvider('user_test'));
+        expect(state.simulation!.remiseScorePct, 0);
+        expect(state.simulation!.primeEstimee, closeTo(5000, 0.01)); // primeMin sécheresse
+      });
+
+      test('score insuffisant (< 30) : pas de réduction, jamais de majoration', () {
+        final container = _makeContainer(_FakeAssuranceRepository());
+        addTearDown(container.dispose);
+        simuler(container, scoreClimat: 10);
+        final state = container.read(assuranceViewModelProvider('user_test'));
+        expect(state.simulation!.remiseScorePct, 0);
+        expect(state.simulation!.primeEstimee, closeTo(5000, 0.01));
+      });
+
+      test('score intermédiaire (30-59) : 5 % de réduction', () {
+        final container = _makeContainer(_FakeAssuranceRepository());
+        addTearDown(container.dispose);
+        simuler(container, scoreClimat: 40);
+        final state = container.read(assuranceViewModelProvider('user_test'));
+        expect(state.simulation!.remiseScorePct, 5);
+        expect(state.simulation!.primeEstimee, closeTo(4750, 0.01)); // 5000 × 0.95
+      });
+
+      test('score bon (60-79) : 15 % de réduction', () {
+        final container = _makeContainer(_FakeAssuranceRepository());
+        addTearDown(container.dispose);
+        simuler(container, scoreClimat: 72);
+        final state = container.read(assuranceViewModelProvider('user_test'));
+        expect(state.simulation!.remiseScorePct, 15);
+        expect(state.simulation!.primeEstimee, closeTo(4250, 0.01)); // 5000 × 0.85
+      });
+
+      test('score excellent (80-100) : 25 % de réduction, la plus forte incitation', () {
+        final container = _makeContainer(_FakeAssuranceRepository());
+        addTearDown(container.dispose);
+        simuler(container, scoreClimat: 95);
+        final state = container.read(assuranceViewModelProvider('user_test'));
+        expect(state.simulation!.remiseScorePct, 25);
+        expect(state.simulation!.primeEstimee, closeTo(3750, 0.01)); // 5000 × 0.75
+        expect(state.simulation!.raisonRecommandation, contains('25 % de réduction'));
+      });
     });
   });
 }

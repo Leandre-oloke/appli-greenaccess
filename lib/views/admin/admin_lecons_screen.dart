@@ -67,6 +67,7 @@ class _AdminLeconsScreenState extends ConsumerState<AdminLeconsScreen> {
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         leading: IconButton(
+          tooltip: 'Retour',
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.go(AppRoutes.adminFormations),
         ),
@@ -198,11 +199,13 @@ class _LeconAdminCard extends StatelessWidget {
               ),
             ),
             IconButton(
+              tooltip: 'Modifier',
               icon: const Icon(Icons.edit_outlined),
               color: AppColors.secondary,
               onPressed: onEdit,
             ),
             IconButton(
+              tooltip: 'Supprimer',
               icon: const Icon(Icons.delete_outline),
               color: AppColors.error,
               onPressed: onDelete,
@@ -346,6 +349,7 @@ class _AdminLeconFormScreenState extends ConsumerState<AdminLeconFormScreen> {
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         leading: IconButton(
+          tooltip: 'Retour',
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.go(
             AppRoutes.adminCourseLecons(widget.courseId),

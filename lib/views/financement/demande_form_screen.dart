@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/demande_financement_model.dart';
+import '../../utils/eligibilite_financement.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 import '../../viewmodels/financement_viewmodel.dart';
+import '../../viewmodels/formation_viewmodel.dart';
 import '../../viewmodels/scoring_viewmodel.dart';
 
 class DemandeFormScreen extends ConsumerStatefulWidget {
@@ -82,12 +84,19 @@ class _DemandeFormScreenState extends ConsumerState<DemandeFormScreen> {
       final uid = user?.id ?? '';
       if (uid.isNotEmpty) {
         ref.read(scoringViewModelProvider(uid).notifier).loadLatestScore();
+        ref.read(formationViewModelProvider(uid).notifier).loadCourses();
       }
     });
   }
 
   Future<void> _submit() async {
     final uid = ref.read(authViewModelProvider).user?.id ?? '';
+    // Règle 4.1 (CDC §4.1, J5.14) : le badge Assuré Climat bonifie de +10 pts
+    // le score d'éligibilité stocké sur la demande.
+    final aBadgeAssureClimat = ref
+        .read(formationViewModelProvider(uid))
+        .badges
+        .any((b) => b.id == badgeIdAssureClimat);
     final demande = DemandeFinancementModel(
       id: '',
       userId: uid,
@@ -98,7 +107,10 @@ class _DemandeFormScreenState extends ConsumerState<DemandeFormScreen> {
       pays: _pays,
       descriptionProjet: _description,
       statut: StatutDemande.soumis,
-      scoreEligibilite: ref.read(scoringViewModelProvider(uid)).currentScore?.scoreTotal ?? 0,
+      scoreEligibilite: scoreEligibiliteFinancement(
+        ref.read(scoringViewModelProvider(uid)).currentScore?.scoreTotal ?? 0,
+        aBadgeAssureClimat: aBadgeAssureClimat,
+      ),
       docsUrl: [],
       alignementTaxonomie: _uemoaCriteres.length >= 3 ? 'Conforme' : _uemoaCriteres.isNotEmpty ? 'Partiel' : 'NonConforme',
     );
@@ -224,6 +236,10 @@ class _DemandeFormScreenState extends ConsumerState<DemandeFormScreen> {
 
   void _onNext() {
     if (_step < 6) {
+      // Les étapes 1-3 ont des champs avec validator (nom requis, description
+      // ≥ 20 caractères) — sans cet appel, "Suivant" avançait toujours sans
+      // jamais déclencher ces validations.
+      if (!(_formKey.currentState?.validate() ?? true)) return;
       setState(() => _step++);
     } else if (_confirmed) {
       _submit();
@@ -311,11 +327,13 @@ class _Step1Identite extends StatelessWidget {
       title: 'Identité & Profil',
       icon: Icons.person_outline,
       children: [
-        _field('Nom complet', initialValue: nom, onChanged: onNom, required: true),
+        _field('Nom complet',
+            key: ValueKey('nom-$nom'), initialValue: nom, onChanged: onNom, required: true),
         const SizedBox(height: 12),
         _dropdown('Pays', value: pays, items: paysList, onChanged: onPays),
         const SizedBox(height: 12),
-        _field('Région / Ville', initialValue: region, onChanged: onRegion),
+        _field('Région / Ville',
+            key: ValueKey('region-$region'), initialValue: region, onChanged: onRegion),
         const SizedBox(height: 12),
         _dropdown('Secteur d\'activité', value: secteur, items: secteursList, onChanged: onSecteur),
       ],
@@ -452,9 +470,17 @@ class _Step4Impact extends StatelessWidget {
           children: [
             const Text('Emplois verts créés:', style: TextStyle(fontWeight: FontWeight.w500)),
             const SizedBox(width: 12),
-            IconButton(icon: const Icon(Icons.remove_circle_outline), onPressed: emplois > 0 ? () => onEmplois(emplois - 1) : null),
+            IconButton(
+              tooltip: 'Diminuer',
+              icon: const Icon(Icons.remove_circle_outline),
+              onPressed: emplois > 0 ? () => onEmplois(emplois - 1) : null,
+            ),
             Text('$emplois', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            IconButton(icon: const Icon(Icons.add_circle_outline), onPressed: () => onEmplois(emplois + 1)),
+            IconButton(
+              tooltip: 'Augmenter',
+              icon: const Icon(Icons.add_circle_outline),
+              onPressed: () => onEmplois(emplois + 1),
+            ),
           ],
         ),
         const SizedBox(height: 12),
@@ -645,8 +671,16 @@ class _StepCard extends StatelessWidget {
   }
 }
 
-Widget _field(String label, {required String initialValue, required void Function(String) onChanged, bool required = false}) {
+// `key` : un TextFormField(initialValue:) ne resynchronise pas son texte
+// affiché quand `initialValue` change sur un rebuild (seule la toute
+// première construction en tient compte) — sans clé dérivée de la valeur,
+// le pré-remplissage différé du nom/de la région depuis le profil
+// utilisateur (initState -> addPostFrameCallback -> setState, après le tout
+// premier build) resterait invisible à l'écran alors que la variable d'état
+// sous-jacente est bien à jour. Voir _Step1Identite.
+Widget _field(String label, {Key? key, required String initialValue, required void Function(String) onChanged, bool required = false}) {
   return TextFormField(
+    key: key,
     initialValue: initialValue,
     decoration: InputDecoration(labelText: label),
     onChanged: onChanged,
@@ -656,7 +690,7 @@ Widget _field(String label, {required String initialValue, required void Functio
 
 Widget _dropdown(String label, {required String value, required List<String> items, required void Function(String?) onChanged}) {
   return DropdownButtonFormField<String>(
-    value: value,
+    initialValue: value,
     decoration: InputDecoration(labelText: label),
     items: items.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
     onChanged: onChanged,

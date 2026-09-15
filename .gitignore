@@ -1,3 +1,7 @@
+# Livrables générés à la racine (APK de test, exports xlsx) — pas du code source
+/*.apk
+/GreenAccess_Plan_Implementation.xlsx
+
 # Miscellaneous
 *.class
 *.log

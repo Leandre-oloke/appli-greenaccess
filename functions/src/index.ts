@@ -7,7 +7,7 @@ const db = admin.firestore();
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-interface ScoreCriteres {
+export interface ScoreCriteres {
   scoreActivite: number;   // 0-100 : Agriculture=80, Energie=90, Recyclage=85...
   scoreUemoa: number;      // 0-100 : Conforme=100, Partiel=60, NonConforme=20
   scoreCo2: number;        // 0-100 : calculé sur réduction CO2
@@ -16,7 +16,7 @@ interface ScoreCriteres {
   bonusFormation: number;  // 0-15 : +2 à +5 pts par cours certifié
 }
 
-interface ScoreInput {
+export interface ScoreInput {
   userId: string;
   typeActivite: string;
   alignementUemoa: string; // "Oui" | "Partiel" | "Non"
@@ -27,7 +27,7 @@ interface ScoreInput {
 
 // ── Constantes métier ────────────────────────────────────────────────────────
 
-const SCORE_ACTIVITE_MAP: Record<string, number> = {
+export const SCORE_ACTIVITE_MAP: Record<string, number> = {
   Agriculture: 75,
   "Énergie renouvelable": 90,
   Recyclage: 85,
@@ -37,14 +37,20 @@ const SCORE_ACTIVITE_MAP: Record<string, number> = {
   Autre: 50,
 };
 
-const SCORE_CERTIF_MAP: Record<string, number> = {
+// Les libellés courts ("Bio", "Équitable") sont ceux affichés par le
+// formulaire de scoring (scoring_form_screen.dart) ; les libellés longs
+// restent acceptés pour compat avec d'anciens appels. Alignés sur
+// ScoreRepository._certifMap côté Dart (repli local).
+export const SCORE_CERTIF_MAP: Record<string, number> = {
+  "Bio": 25,
   "Agriculture biologique": 25,
+  "Équitable": 20,
   "Commerce équitable": 20,
   "ISO 14001": 30,
   "Carbone Neutre": 25,
 };
 
-const UEMOA_SCORE_MAP: Record<string, number> = {
+export const UEMOA_SCORE_MAP: Record<string, number> = {
   Oui: 100,
   Partiel: 60,
   Non: 20,
@@ -54,7 +60,7 @@ const UEMOA_SCORE_MAP: Record<string, number> = {
  * Calcule le Score Climat ESG selon la formule du CDC :
  * Score = (Activité×0.25) + (UEMOA×0.20) + (CO2×0.20) + (Certif×0.20) + (Résilience×0.15) + BonusFormation
  */
-function calculerScore(input: ScoreCriteres): number {
+export function calculerScore(input: ScoreCriteres): number {
   const score =
     input.scoreActivite * 0.25 +
     input.scoreUemoa * 0.20 +
@@ -63,10 +69,13 @@ function calculerScore(input: ScoreCriteres): number {
     input.scoreResilience * 0.15 +
     input.bonusFormation;
 
-  return Math.min(100, Math.round(score * 10) / 10);
+  // Borne basse en plus de la borne haute : un critère hors plage (ex.
+  // resilience négatif, non revalidé côté client) ne doit jamais produire
+  // un score total négatif.
+  return Math.max(0, Math.min(100, Math.round(score * 10) / 10));
 }
 
-function co2ToScore(reductionCo2: number): number {
+export function co2ToScore(reductionCo2: number): number {
   if (reductionCo2 >= 500) return 100;
   if (reductionCo2 >= 200) return 80;
   if (reductionCo2 >= 100) return 60;
@@ -75,16 +84,26 @@ function co2ToScore(reductionCo2: number): number {
   return 0;
 }
 
-function certifToScore(certifications: string[]): number {
+export function certifToScore(certifications: string[]): number {
   const total = certifications.reduce((sum, c) => sum + (SCORE_CERTIF_MAP[c] ?? 0), 0);
-  return Math.min(100, total);
+  return Math.max(0, Math.min(100, total));
 }
 
-function resilienceToScore(resilience: number): number {
-  return Math.min(100, resilience * 20);
+export function resilienceToScore(resilience: number): number {
+  return Math.max(0, Math.min(100, resilience * 20));
 }
 
-async function getBonusFormation(userId: string): Promise<number> {
+// Exportée pour être testable directement (J5.17, scénario T02). Le filtre
+// `.where("dateObtention", ...)` a été retiré : il ciblait un champ en
+// camelCase qu'aucun badge n'écrit jamais (tous les déclencheurs — client et
+// Cloud Function — stockent `date_obtention` en snake_case, voir le bug
+// analogue corrigé en J5.11-J5.12) ; ce filtre écartait donc silencieusement
+// TOUS les badges, rendant le bonus de +3 pts/badge inopérant côté serveur
+// depuis toujours. Chaque badge a de toute façon systématiquement une date
+// d'obtention dès sa création (aucun état "en attente" à filtrer) — même
+// requête, sans `.where()`, que `ScoreRepository._getBonusFormation()` côté
+// Dart (repli local).
+export async function getBonusFormation(userId: string): Promise<number> {
   const progressSnap = await db
     .collection("users")
     .doc(userId)
@@ -93,22 +112,19 @@ async function getBonusFormation(userId: string): Promise<number> {
     .get();
 
   const completedCourses = progressSnap.size;
-  const badgesSnap = await db
-    .collection("users")
-    .doc(userId)
-    .collection("badges")
-    .where("dateObtention", "!=", null)
-    .get();
+  const badgesSnap = await db.collection("users").doc(userId).collection("badges").get();
 
   const badges = badgesSnap.size;
   // +2 pts par cours, +3 pts par badge certifié, max 15 pts
   return Math.min(15, completedCourses * 2 + badges * 3);
 }
 
-function determineNiveau(score: number): string {
+// Paliers CDC §3 : 0-29 Insuffisant · 30-59 Intermédiaire · 60-79 Bon · 80-100 Excellent
+// (alignés sur ScoreClimatModel.niveauFromScore côté Flutter).
+export function determineNiveau(score: number): string {
   if (score >= 80) return "excellent";
   if (score >= 60) return "bon";
-  if (score >= 40) return "intermediaire";
+  if (score >= 30) return "intermediaire";
   return "insuffisant";
 }
 
@@ -159,26 +175,88 @@ export const calculerScoreClimat = functions
     const niveau = determineNiveau(scoreTotal);
     const suggestions = genererSuggestions(criteres, scoreTotal);
 
+    // Schéma identique à ScoreRepository.saveScore() côté Dart (repli local) —
+    // c'est ScoreClimatModel.fromFirestore / ScoreCriteres.fromMap qui relisent
+    // ce document (historique, résultat) : les clés doivent correspondre
+    // exactement, y compris pour le sous-objet "criteres".
+    const criteresDoc = {
+      activite: criteres.scoreActivite,
+      uemoa: criteres.scoreUemoa,
+      co2: criteres.scoreCo2,
+      certif: criteres.scoreCertif,
+      resilience: criteres.scoreResilience,
+      bonus_formation: criteres.bonusFormation,
+    };
     const scoreDoc = {
       userId: data.userId,
-      scoreTotal,
-      criteres: {
-        score_activite: criteres.scoreActivite,
-        score_uemoa: criteres.scoreUemoa,
-        score_co2: criteres.scoreCo2,
-        score_certif: criteres.scoreCertif,
-        score_resilience: criteres.scoreResilience,
-        bonus_formation: criteres.bonusFormation,
-      },
+      score_total: scoreTotal,
+      criteres: criteresDoc,
       niveau,
       suggestions,
-      dateCalcul: admin.firestore.FieldValue.serverTimestamp(),
-      versionAlgo: "1.0.0",
+      date_calcul: admin.firestore.FieldValue.serverTimestamp(),
+      version_algo: "v1-cloud",
     };
 
     const docRef = await db.collection("scores_climat").add(scoreDoc);
-    return { scoreId: docRef.id, scoreTotal, niveau, suggestions };
+    // criteres inclus explicitement : le client (ScoreRepository.calculate)
+    // construit son ScoreClimatModel depuis cette réponse, pas depuis une
+    // relecture Firestore.
+    return { scoreId: docRef.id, scoreTotal, criteres: criteresDoc, niveau, suggestions };
   });
+
+// ── Émission de badges OpenBadge (J5.10, CDC §2.3) ───────────────────────────
+
+// Assertion OpenBadge v2 minimale (https://www.imsglobal.org/spec/ob/v2p0) —
+// suffisante pour être vérifiable/affichable ; les champs optionnels
+// (evidence, expires, image embarquée) restent hors du périmètre de cette
+// tâche.
+export interface OpenBadgeAssertion {
+  "@context": "https://w3id.org/openbadges/v2";
+  type: "Assertion";
+  id: string;
+  recipient: { type: "id"; identity: string };
+  badge: string;
+  issuedOn: string;
+  verification: { type: "hosted" };
+}
+
+export interface BadgeIssuer {
+  issueBadge(params: {
+    userId: string;
+    badgeId: string;
+    badgeName: string;
+  }): Promise<{ url: string; assertion: OpenBadgeAssertion }>;
+}
+
+// Mock tracé, sans appel réseau réel — utilisé tant que le compte OpenBadge
+// Factory (ou Badgr) n'est pas approvisionné. `issuedBadges` rend chaque
+// émission vérifiable en test, comme `MockWhatsAppChannel.sentMessages`.
+export class MockOpenBadgeIssuer implements BadgeIssuer {
+  readonly issuedBadges: { userId: string; badgeId: string; assertion: OpenBadgeAssertion }[] = [];
+
+  async issueBadge(params: {
+    userId: string;
+    badgeId: string;
+    badgeName: string;
+  }): Promise<{ url: string; assertion: OpenBadgeAssertion }> {
+    const { userId, badgeId } = params;
+    const url = `https://badges.greenaccess.test/assertions/${userId}-${badgeId}`;
+    const assertion: OpenBadgeAssertion = {
+      "@context": "https://w3id.org/openbadges/v2",
+      type: "Assertion",
+      id: url,
+      recipient: { type: "id", identity: userId },
+      badge: `https://badges.greenaccess.test/badgeclass/${badgeId}`,
+      issuedOn: new Date().toISOString(),
+      verification: { type: "hosted" },
+    };
+    this.issuedBadges.push({ userId, badgeId, assertion });
+    functions.logger.info(`[MockOpenBadgeIssuer] Badge ${badgeId} émis pour ${userId} → ${url}`);
+    return { url, assertion };
+  }
+}
+
+export const defaultBadgeIssuer: BadgeIssuer = new MockOpenBadgeIssuer();
 
 // ── Cloud Function : onCourseCompleted ───────────────────────────────────────
 
@@ -201,19 +279,53 @@ export const onCourseCompleted = functions
       const badgeRef = db.collection("users").doc(userId).collection("badges").doc(course.badge_id);
       const badgeSnap = await badgeRef.get();
       if (!badgeSnap.exists) {
-        await badgeRef.set({
-          dateObtention: admin.firestore.FieldValue.serverTimestamp(),
-          courseId,
-          openbadge_url: null,
+        // J5.10-J5.12 : émission OpenBadge (assertion v2 + URL, J5.10),
+        // conservée dans openbadge_url (J5.11) plutôt que codée en dur à
+        // `null` comme avant le branchement du BadgeIssuer sur ce
+        // déclencheur (J5.12).
+        const { url } = await defaultBadgeIssuer.issueBadge({
+          userId,
+          badgeId: course.badge_id,
+          badgeName: course.titre ?? course.badge_id,
         });
 
-        // TODO: appel OpenBadge Factory API pour émettre le badge certifié
-        functions.logger.info(`Badge ${course.badge_id} déclenché pour ${userId}`);
+        // `date_obtention` (snake_case) — le champ était écrit en
+        // `dateObtention` (camelCase) avant cette tâche, alors que
+        // `BadgeModel.fromFirestore` (lib/models/badge_model.dart) lit
+        // exclusivement `date_obtention` : un badge délivré par ce
+        // déclencheur s'affichait donc avec `dateObtention: null` côté app
+        // (`BadgeModel.isObtenu` toujours faux), en silence. Corrigé au
+        // passage, dans le même esprit que le bug partenaire_id/partenaireId
+        // de J5.5.
+        await badgeRef.set({
+          date_obtention: admin.firestore.FieldValue.serverTimestamp(),
+          courseId,
+          openbadge_url: url,
+        });
+
+        functions.logger.info(`Badge ${course.badge_id} déclenché pour ${userId}.`);
       }
     }
   });
 
 // ── Cloud Function : onDemandeSubmitted ──────────────────────────────────────
+
+// Extrait pour être testable indépendamment de admin.messaging() (aucun
+// émulateur FCM n'existe dans la Firebase Emulator Suite — appeler
+// messaging() en test contacterait un vrai serveur Google). Voir
+// functions/test/triggers.test.ts.
+export async function getPartenaireFinanceurTokens(): Promise<string[]> {
+  const partenairesSnap = await db
+    .collection("users")
+    .where("role", "==", "partenaireFinanceur")
+    .get();
+
+  const tokens: string[] = [];
+  partenairesSnap.forEach((doc) => {
+    if (doc.data().fcm_token) tokens.push(doc.data().fcm_token);
+  });
+  return tokens;
+}
 
 export const onDemandeSubmitted = functions
   .region("europe-west1")
@@ -222,16 +334,7 @@ export const onDemandeSubmitted = functions
     const demande = snap.data();
     if (!demande || demande.statut !== "soumis") return;
 
-    // Notifier les partenaires financeurs éligibles (FCM)
-    const partenairesSnap = await db
-      .collection("users")
-      .where("role", "==", "partenaireFinanceur")
-      .get();
-
-    const tokens: string[] = [];
-    partenairesSnap.forEach((doc) => {
-      if (doc.data().fcm_token) tokens.push(doc.data().fcm_token);
-    });
+    const tokens = await getPartenaireFinanceurTokens();
 
     if (tokens.length > 0) {
       await admin.messaging().sendEachForMulticast({
@@ -247,7 +350,173 @@ export const onDemandeSubmitted = functions
     functions.logger.info(`Demande ${context.params.demandeId} notifiée à ${tokens.length} partenaires.`);
   });
 
+// ── Canal de secours WhatsApp (J5.7, CDC §2.3) ───────────────────────────────
+
+// Interface abstraite : permet de brancher un vrai client WhatsApp Business
+// API plus tard sans toucher à NotificationService.sendBestEffort() (J5.8).
+export interface WhatsAppChannel {
+  sendMessage(phoneNumber: string, message: string): Promise<boolean>;
+}
+
+// Mock tracé, sans appel réseau réel — utilisé tant que le compte WhatsApp
+// Business API n'est pas approvisionné. `sentMessages` rend les envois
+// vérifiables en test.
+export class MockWhatsAppChannel implements WhatsAppChannel {
+  readonly sentMessages: { phoneNumber: string; message: string }[] = [];
+
+  async sendMessage(phoneNumber: string, message: string): Promise<boolean> {
+    this.sentMessages.push({ phoneNumber, message });
+    functions.logger.info(`[MockWhatsApp] → ${phoneNumber} : ${message}`);
+    return true;
+  }
+}
+
+// ── NotificationService : sélection automatique de canal (J5.8, CDC §2.3) ───
+
+// `sendFcm` est injectable pour rester testable : le namespace `admin`
+// importé en `import * as admin` est figé et non mockable (voir
+// checkAlertesClimatiques.test.ts et README.md §7), contrairement à une
+// fonction passée en paramètre de constructeur.
+export type FcmSender = (
+  token: string,
+  title: string,
+  body: string,
+  data?: Record<string, string>
+) => Promise<void>;
+
+const defaultFcmSender: FcmSender = async (token, title, body, data) => {
+  await admin.messaging().sendEachForMulticast({
+    tokens: [token],
+    notification: { title, body },
+    data,
+  });
+};
+
+// Garantit la délivrance d'une notification critique : tente FCM en premier,
+// puis se rabat sur WhatsApp (zone à faible signal, app pas toujours
+// joignable en push, cf. CDC §2.3) si FCM échoue ou si aucun token FCM n'est
+// disponible. "Best effort" : ne lève jamais, renvoie le canal effectivement
+// utilisé.
+export class NotificationService {
+  constructor(
+    private readonly whatsapp: WhatsAppChannel,
+    private readonly sendFcm: FcmSender = defaultFcmSender
+  ) {}
+
+  async sendBestEffort(params: {
+    fcmToken?: string | null;
+    phoneNumber?: string | null;
+    title: string;
+    body: string;
+    data?: Record<string, string>;
+  }): Promise<"fcm" | "whatsapp" | "none"> {
+    const { fcmToken, phoneNumber, title, body, data } = params;
+
+    if (fcmToken) {
+      try {
+        await this.sendFcm(fcmToken, title, body, data);
+        return "fcm";
+      } catch (e) {
+        functions.logger.warn(`FCM indisponible, repli WhatsApp : ${e}`);
+      }
+    }
+
+    if (phoneNumber) {
+      const envoye = await this.whatsapp.sendMessage(phoneNumber, `${title}\n${body}`);
+      if (envoye) return "whatsapp";
+    }
+
+    return "none";
+  }
+}
+
+export const defaultWhatsAppChannel = new MockWhatsAppChannel();
+const notificationService = new NotificationService(defaultWhatsAppChannel);
+
+// ── Cloud Function : onMessageSent ───────────────────────────────────────────
+
+// Extraite pour être testable indépendamment de admin.messaging() (même
+// contrainte que getPartenaireFinanceurTokens ci-dessus). Le destinataire est
+// "l'autre partie" de la conversation : si l'auteur est le demandeur, on
+// notifie le partenaire financeur assigné à la demande (aucune notification
+// si aucun partenaire n'est encore assigné) ; sinon (l'auteur est le
+// partenaire ou un admin), on notifie le demandeur.
+export async function getDestinataireContact(
+  demandeUserId: string,
+  demandePartenaireId: string | undefined,
+  auteurId: string
+): Promise<{ fcmToken: string | null; phoneNumber: string | null }> {
+  const destinataireId = auteurId === demandeUserId ? demandePartenaireId : demandeUserId;
+  if (!destinataireId) return { fcmToken: null, phoneNumber: null };
+
+  const userSnap = await db.collection("users").doc(destinataireId).get();
+  const data = userSnap.data();
+  return {
+    fcmToken: data?.fcm_token ?? null,
+    phoneNumber: data?.telephone ?? null,
+  };
+}
+
+export const onMessageSent = functions
+  .region("europe-west1")
+  .firestore.document("demandes_financement/{demandeId}/messages/{messageId}")
+  .onCreate(async (snap, context) => {
+    const message = snap.data();
+    if (!message) return;
+
+    const demandeSnap = await db
+      .collection("demandes_financement")
+      .doc(context.params.demandeId)
+      .get();
+    const demande = demandeSnap.data();
+    if (!demande) return;
+
+    const contact = await getDestinataireContact(demande.userId, demande.partenaire_id, message.auteur_id);
+    if (!contact.fcmToken && !contact.phoneNumber) {
+      functions.logger.info(`Message ${context.params.messageId} : aucun destinataire à notifier.`);
+      return;
+    }
+
+    const canal = await notificationService.sendBestEffort({
+      fcmToken: contact.fcmToken,
+      phoneNumber: contact.phoneNumber,
+      title: `Nouveau message de ${message.auteur_nom}`,
+      body: message.contenu,
+      data: { demandeId: context.params.demandeId },
+    });
+
+    functions.logger.info(`Message ${context.params.messageId} notifié via ${canal}.`);
+  });
+
 // ── Cloud Function : onAlertClimatique (schedulée) ───────────────────────────
+
+export type TypeAlerte = "secheresse" | "inondation" | "chaleur" | null;
+
+/**
+ * Seuils de détection d'aléa climatique à partir des prévisions Open-Meteo
+ * du jour (extrait pour être testable sans réseau ni Firestore). Priorité
+ * en cas de cumul : inondation > chaleur > sécheresse (même ordre que
+ * l'ancien enchaînement de ternaires dans checkAlertesClimatiques).
+ */
+export function detecterAlerte(precipMm: number, tempMax: number): TypeAlerte {
+  if (precipMm > 80) return "inondation";
+  if (tempMax > 40) return "chaleur";
+  if (precipMm < 2 && tempMax > 35) return "secheresse";
+  return null;
+}
+
+function messageAlerte(typeAlerte: TypeAlerte, zoneNom: string, precipMm: number, tempMax: number): string {
+  switch (typeAlerte) {
+    case "inondation":
+      return `Alerte inondation : ${precipMm}mm prévus dans la zone ${zoneNom}`;
+    case "chaleur":
+      return `Alerte chaleur extrême : ${tempMax}°C prévus dans la zone ${zoneNom}`;
+    case "secheresse":
+      return `Alerte sécheresse : précipitations insuffisantes dans la zone ${zoneNom}`;
+    default:
+      return "";
+  }
+}
 
 export const checkAlertesClimatiques = functions
   .region("europe-west1")
@@ -266,17 +535,10 @@ export const checkAlertesClimatiques = functions
         const precipMm = daily.precipitation_sum?.[0] ?? 0;
         const tempMax = daily.temperature_2m_max?.[0] ?? 0;
 
-        const isSecheresse = precipMm < 2 && tempMax > 35;
-        const isInondation = precipMm > 80;
-        const isChaleur = tempMax > 40;
+        const typeAlerte = detecterAlerte(precipMm, tempMax);
 
-        if (isSecheresse || isInondation || isChaleur) {
-          const typeAlerte = isInondation ? "inondation" : isChaleur ? "chaleur" : "secheresse";
-          const message = isInondation
-            ? `Alerte inondation : ${precipMm}mm prévus dans la zone ${zone.nom}`
-            : isChaleur
-            ? `Alerte chaleur extrême : ${tempMax}°C prévus dans la zone ${zone.nom}`
-            : `Alerte sécheresse : précipitations insuffisantes dans la zone ${zone.nom}`;
+        if (typeAlerte) {
+          const message = messageAlerte(typeAlerte, zone.nom, precipMm, tempMax);
 
           // Notifier les utilisateurs avec un contrat actif dans cette zone
           const contratsSnap = await db

@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/user_model.dart';
+import '../../utils/error_mapper.dart';
 import '../../viewmodels/auth_viewmodel.dart';
+import '../../viewmodels/export_viewmodel.dart';
 
 class ProfilScreen extends ConsumerStatefulWidget {
   const ProfilScreen({super.key});
@@ -73,7 +75,13 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur GPS : $e')),
+          SnackBar(
+            content: Text(mapErrorToMessage(
+              e,
+              fallback:
+                  'Localisation indisponible. Réessayez ou saisissez votre région manuellement.',
+            )),
+          ),
         );
       }
     } finally {
@@ -136,6 +144,7 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
         actions: [
           if (!_editing)
             IconButton(
+              tooltip: 'Modifier le profil',
               icon: const Icon(Icons.edit_outlined),
               onPressed: () => setState(() => _editing = true),
             )
@@ -258,6 +267,12 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
                   side: const BorderSide(color: AppColors.error),
                 ),
               ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () => _showExportDialog(context, user.id),
+                icon: const Icon(Icons.download_outlined),
+                label: const Text('Télécharger mes données'),
+              ),
               const SizedBox(height: 32),
               const Divider(),
               const SizedBox(height: 8),
@@ -326,7 +341,7 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
     required void Function(String?) onChanged,
   }) {
     return DropdownButtonFormField<String>(
-      value: value,
+      initialValue: value,
       decoration: InputDecoration(
         labelText: label,
         filled: true,
@@ -363,6 +378,7 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
                     labelText: 'Mot de passe actuel',
                     prefixIcon: const Icon(Icons.lock_outline),
                     suffixIcon: IconButton(
+                      tooltip: obscureCurrent ? 'Afficher' : 'Masquer',
                       icon: Icon(obscureCurrent ? Icons.visibility_outlined : Icons.visibility_off_outlined),
                       onPressed: () => setDialogState(() => obscureCurrent = !obscureCurrent),
                     ),
@@ -378,6 +394,7 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
                     labelText: 'Nouveau mot de passe',
                     prefixIcon: const Icon(Icons.lock_outline),
                     suffixIcon: IconButton(
+                      tooltip: obscureNew ? 'Afficher' : 'Masquer',
                       icon: Icon(obscureNew ? Icons.visibility_outlined : Icons.visibility_off_outlined),
                       onPressed: () => setDialogState(() => obscureNew = !obscureNew),
                     ),
@@ -458,6 +475,78 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
     }
   }
 
+  /// Export RGPD (J3.4-J3.5) : laisse le choix du format, PDF (lisible) ou
+  /// CSV (réutilisable), plutôt que de déclencher les deux téléchargements
+  /// d'un coup — meilleure expérience qu'une double boîte de dialogue de
+  /// partage/impression s'ouvrant simultanément.
+  Future<void> _showExportDialog(BuildContext context, String userId) async {
+    bool isLoading = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Exporter mes données'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Réunit toutes vos données personnelles (profil, scores, formations, '
+                'demandes de financement, paiements, contrats d\'assurance…) dans un '
+                'seul fichier.',
+                style: TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              if (isLoading) ...[
+                const Center(child: CircularProgressIndicator()),
+                const SizedBox(height: 8),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isLoading ? null : () => Navigator.pop(ctx),
+              child: const Text('Annuler'),
+            ),
+            TextButton(
+              onPressed: isLoading
+                  ? null
+                  : () async {
+                      setDialogState(() => isLoading = true);
+                      await ref.read(exportViewModelProvider.notifier).exportAsCsv(userId);
+                      final error = ref.read(exportViewModelProvider).error;
+                      if (!ctx.mounted) return;
+                      Navigator.pop(ctx);
+                      if (error != null) _showExportError(context, error);
+                    },
+              child: const Text('CSV'),
+            ),
+            FilledButton(
+              onPressed: isLoading
+                  ? null
+                  : () async {
+                      setDialogState(() => isLoading = true);
+                      await ref.read(exportViewModelProvider.notifier).exportAsPdf(userId);
+                      final error = ref.read(exportViewModelProvider).error;
+                      if (!ctx.mounted) return;
+                      Navigator.pop(ctx);
+                      if (error != null) _showExportError(context, error);
+                    },
+              child: const Text('PDF'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showExportError(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: AppColors.error),
+    );
+  }
+
   Future<bool?> _confirmLogoutDialog(BuildContext context) {
     return showDialog<bool>(
       context: context,
@@ -515,6 +604,7 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
                   hintText: 'Mot de passe',
                   prefixIcon: const Icon(Icons.lock_outline),
                   suffixIcon: IconButton(
+                    tooltip: obscure ? 'Afficher' : 'Masquer',
                     icon: Icon(obscure
                         ? Icons.visibility_outlined
                         : Icons.visibility_off_outlined),

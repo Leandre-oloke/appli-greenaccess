@@ -1,19 +1,24 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import '../models/assurance_model.dart';
+import 'audit_repository.dart';
 import 'cours_repository.dart';
 
 class AssuranceRepository {
   final FirebaseFirestore _firestore;
+  final AuditRepository _audit;
 
   // Lazy pour éviter FirebaseStorage.instance en test quand le repo est sous-classé.
   final FirebaseStorage? _storageOverride;
   FirebaseStorage get _storage => _storageOverride ?? FirebaseStorage.instance;
 
-  AssuranceRepository({FirebaseFirestore? firestore, FirebaseStorage? storage})
+  AssuranceRepository({FirebaseFirestore? firestore, FirebaseStorage? storage, AuditRepository? audit})
       : _firestore = firestore ?? FirebaseFirestore.instance,
-        _storageOverride = storage;
+        _storageOverride = storage,
+        _audit = audit ?? AuditRepository(firestore: firestore);
 
   Future<List<ProduitAssuranceModel>> getProduitsParZone(String zone) async {
     final snapshot = await _firestore
@@ -45,6 +50,12 @@ class AssuranceRepository {
     await CoursRepository(firestore: _firestore)
         .triggerAssureClimatBadge(contrat.userId);
 
+    await _audit.logAction(
+      userId: contrat.userId,
+      action: 'assurance_souscrite',
+      details: {'contratId': contrat.id, 'produitId': contrat.produitId},
+    );
+
     return contrat;
   }
 
@@ -60,11 +71,45 @@ class AssuranceRepository {
     return contrats;
   }
 
+  /// Repli sur le jeu de données bundlé (`assets/data/zones_alea.json`,
+  /// Phase 4) quand Firestore est vide — même convention que
+  /// `CoursRepository.fetchAll()` pour les cours de démo : aucune tâche
+  /// d'administration n'existe encore pour peupler `zones_alea`, l'app doit
+  /// rester utilisable sans elle.
   Future<List<ZoneAleaModel>> getZonesAlea() async {
-    final snapshot = await _firestore.collection('zones_alea').get();
-    return snapshot.docs
-        .map((doc) => ZoneAleaModel.fromFirestore(doc.data(), doc.id))
+    try {
+      final snapshot = await _firestore.collection('zones_alea').get();
+      if (snapshot.docs.isNotEmpty) {
+        return snapshot.docs
+            .map((doc) => ZoneAleaModel.fromFirestore(doc.data(), doc.id))
+            .toList();
+      }
+    } catch (_) {}
+    return _loadZonesAleaFromAssets();
+  }
+
+  Future<List<ZoneAleaModel>> _loadZonesAleaFromAssets() async {
+    final raw = await rootBundle.loadString('assets/data/zones_alea.json');
+    final decoded = jsonDecode(raw) as List<dynamic>;
+    return decoded
+        .map((z) => ZoneAleaModel.fromJson(z as Map<String, dynamic>))
         .toList();
+  }
+
+  /// Importe le jeu de données bundlé (`assets/data/zones_alea.json`) dans
+  /// Firestore (J4.15) — permet à un admin de peupler/rafraîchir `zones_alea`
+  /// sans redéploiement de l'app. Un seul batch pour les 16 zones.
+  Future<void> importDefaultZonesAlea() async {
+    final zones = await _loadZonesAleaFromAssets();
+    final batch = _firestore.batch();
+    for (final zone in zones) {
+      batch.set(_firestore.collection('zones_alea').doc(zone.id), zone.toFirestore());
+    }
+    await batch.commit();
+  }
+
+  Future<void> deleteZoneAlea(String id) async {
+    await _firestore.collection('zones_alea').doc(id).delete();
   }
 
   /// Upload un document de souscription vers Firebase Storage.
@@ -133,5 +178,17 @@ class AssuranceRepository {
         .update({'statut': StatutContrat.sinistre.name});
 
     return doc.id;
+  }
+
+  /// Sinistres déclarés par un utilisateur (toutes zones/contrats confondus)
+  /// — utilisé par l'export RGPD (J3.4), pas encore exposé ailleurs dans l'app.
+  Future<List<SinistreModel>> getSinistres(String userId) async {
+    final snapshot = await _firestore
+        .collection('sinistres')
+        .where('userId', isEqualTo: userId)
+        .get();
+    return snapshot.docs
+        .map((doc) => SinistreModel.fromFirestore(doc.data(), doc.id))
+        .toList();
   }
 }

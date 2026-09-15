@@ -1,12 +1,15 @@
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/paiement_model.dart';
+import 'audit_repository.dart';
 
 class PaiementRepository {
   final FirebaseFirestore _firestore;
+  final AuditRepository _audit;
 
-  PaiementRepository({FirebaseFirestore? firestore})
-      : _firestore = firestore ?? FirebaseFirestore.instance;
+  PaiementRepository({FirebaseFirestore? firestore, AuditRepository? audit})
+      : _firestore = firestore ?? FirebaseFirestore.instance,
+        _audit = audit ?? AuditRepository(firestore: firestore);
 
   /// Génère une référence de paiement unique lisible par l'opérateur.
   String _genReference() {
@@ -38,6 +41,11 @@ class PaiementRepository {
       'date_confirmation': null,
     };
     final doc = await _firestore.collection('paiements').add(payload);
+    await _audit.logAction(
+      userId: userId,
+      action: 'paiement_initie',
+      details: {'paiementId': doc.id, 'montant': montant, 'operateur': operateur.name},
+    );
     return PaiementModel(
       id: doc.id,
       demandeId: demandeId,

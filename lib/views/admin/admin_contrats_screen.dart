@@ -54,6 +54,7 @@ class _AdminContratsScreenState extends ConsumerState<AdminContratsScreen> {
         foregroundColor: Colors.white,
         actions: [
           IconButton(
+            tooltip: 'Actualiser',
             icon: const Icon(Icons.refresh),
             onPressed: () => ref.read(adminViewModelProvider.notifier).loadContrats(),
           ),

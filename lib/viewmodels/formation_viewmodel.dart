@@ -1,8 +1,15 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
+
 import '../models/course_model.dart';
 import '../models/lecon_model.dart';
 import '../models/badge_model.dart';
 import '../repositories/cours_repository.dart';
+import '../utils/badge_export_formatters.dart';
 
 class FormationState {
   final List<CourseModel> courses;
@@ -57,9 +64,19 @@ class FormationViewModel extends StateNotifier<FormationState> {
   Future<void> loadCourses() async {
     state = state.copyWith(isLoading: true);
     try {
-      final courses = await _repository.fetchAll();
-      final progress = await _repository.fetchProgress(userId);
-      final badges = await _repository.fetchBadges(userId);
+      // J6.7 (CDC §7.1 · T10) — les 3 lectures sont indépendantes (aucune ne
+      // dépend du résultat d'une autre) : les paralléliser plutôt que les
+      // enchaîner en séquence réduit d'environ 3x le temps total passé en
+      // aller-retour réseau au premier rendu du tableau de bord, qui
+      // déclenche cette méthode dès la connexion.
+      final results = await Future.wait([
+        _repository.fetchAll(),
+        _repository.fetchProgress(userId),
+        _repository.fetchBadges(userId),
+      ]);
+      final courses = results[0] as List<CourseModel>;
+      final progress = results[1] as List<CourseProgress>;
+      final badges = results[2] as List<BadgeModel>;
       state = state.copyWith(
         courses: courses,
         progress: progress,
@@ -106,6 +123,41 @@ class FormationViewModel extends StateNotifier<FormationState> {
 
   Future<void> trackProgress(String courseId) async {
     await loadCourses();
+  }
+
+  // ── Export des badges (J5.16, CDC §5) ─────────────────────────────────────
+
+  String _todayStamp() {
+    final now = DateTime.now();
+    return '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> exporterBadgesJson() async {
+    try {
+      final json = buildBadgesJson(state.badges);
+      final bytes = Uint8List.fromList(utf8.encode(json));
+      await Share.shareXFiles([
+        XFile.fromData(
+          bytes,
+          mimeType: 'application/json',
+          name: 'greenaccess_badges_${_todayStamp()}.json',
+        ),
+      ]);
+    } catch (e) {
+      state = state.copyWith(error: 'Export impossible. Réessayez.');
+    }
+  }
+
+  Future<void> exporterBadgesPdf() async {
+    try {
+      final bytes = await buildBadgesPdf(state.badges);
+      await Printing.sharePdf(
+        bytes: bytes,
+        filename: 'greenaccess_badges_${_todayStamp()}.pdf',
+      );
+    } catch (e) {
+      state = state.copyWith(error: 'Export impossible. Réessayez.');
+    }
   }
 }
 

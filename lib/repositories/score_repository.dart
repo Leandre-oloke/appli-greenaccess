@@ -1,6 +1,25 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import '../models/score_climat_model.dart';
+import '../utils/perf_trace.dart';
+
+/// CDC §4.4 — règle absolue : « le calcul n'est jamais effectué côté client ».
+/// Désactivé par défaut : n'active ce repli que pour du développement local
+/// (ex. contre les émulateurs, sans avoir déployé `calculerScoreClimat`), en
+/// sachant que le score obtenu n'est alors PAS celui du serveur.
+///   flutter run --dart-define=ALLOW_LOCAL_SCORE_FALLBACK=true
+const bool kAllowLocalScoreFallback =
+    bool.fromEnvironment('ALLOW_LOCAL_SCORE_FALLBACK');
+
+/// Levée quand `calculerScoreClimat` est injoignable et qu'aucun repli n'est
+/// autorisé ([kAllowLocalScoreFallback] à `false`, le cas normal en prod).
+class ScoreCalculationException implements Exception {
+  final String message;
+  const ScoreCalculationException(this.message);
+
+  @override
+  String toString() => message;
+}
 
 class ScoreRepository {
   final FirebaseFirestore _firestore;
@@ -8,18 +27,37 @@ class ScoreRepository {
 
   ScoreRepository({FirebaseFirestore? firestore, FirebaseFunctions? functions})
       : _firestore = firestore ?? FirebaseFirestore.instance,
-        _functions = functions ?? FirebaseFunctions.instance;
+        // calculerScoreClimat est déployée sur europe-west1 (functions/src/index.ts,
+        // main.dart) — FirebaseFunctions.instance viserait us-central1 par défaut
+        // et l'appel échouerait systématiquement en "not-found" une fois déployé.
+        _functions = functions ?? FirebaseFunctions.instanceFor(region: 'europe-west1');
 
-  /// Calcule le score en appelant la Cloud Function.
-  /// Si la CF n'est pas disponible (plan Spark, émulateur absent),
-  /// bascule automatiquement sur le calcul local [_calculLocalFallback].
-  Future<ScoreClimatModel> calculate(String userId, Map<String, dynamic> inputs) async {
+  /// Calcule le score en appelant la Cloud Function `calculerScoreClimat`.
+  ///
+  /// Si elle est injoignable : repli local uniquement si
+  /// [kAllowLocalScoreFallback] est activé (dev only) ; sinon lève
+  /// [ScoreCalculationException] avec un message affichable tel quel.
+  Future<ScoreClimatModel> calculate(String userId, Map<String, dynamic> inputs) =>
+      tracedOperation('score_calculation', () => _calculate(userId, inputs));
+
+  Future<ScoreClimatModel> _calculate(String userId, Map<String, dynamic> inputs) async {
     try {
       final callable = _functions.httpsCallable(
         'calculerScoreClimat',
         options: HttpsCallableOptions(timeout: const Duration(seconds: 15)),
       );
-      final result = await callable.call({...inputs, 'userId': userId});
+      // La Cloud Function attend des clés camelCase (interface ScoreInput côté
+      // functions/src/index.ts) alors que le formulaire construit un Map en
+      // snake_case pour le repli local — on convertit ici plutôt que de faire
+      // porter ce détail d'intégration à l'écran appelant.
+      final result = await callable.call({
+        'userId': userId,
+        'typeActivite': inputs['type_activite'],
+        'alignementUemoa': inputs['alignement_uemoa'],
+        'reductionCo2': inputs['co2_evite'],
+        'certifications': inputs['certifications'],
+        'resilience': inputs['resilience'],
+      });
       final data = Map<String, dynamic>.from(result.data as Map);
       final score = ScoreClimatModel(
         id: data['scoreId'] ?? '',
@@ -33,9 +71,13 @@ class ScoreRepository {
       );
       return score;
     } catch (_) {
-      // Fallback local — même formule que la CF TypeScript.
-      // TODO(prod): supprimer ce fallback une fois le plan Blaze activé.
-      return _calculLocalFallback(userId, inputs);
+      if (kAllowLocalScoreFallback) {
+        return _calculLocalFallback(userId, inputs);
+      }
+      throw const ScoreCalculationException(
+        'Le calcul du score est momentanément indisponible. Réessayez dans '
+        'quelques instants, ou complétez des formations en attendant.',
+      );
     }
   }
 
