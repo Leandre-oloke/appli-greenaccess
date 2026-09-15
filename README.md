@@ -1284,6 +1284,19 @@ existant a donc pu être instrumenté sans casser un seul test déjà vert.
 > trouvé à l'étape 4) : la liste est bien dans un `Expanded`+`ListView`, donc scrollable sur tout
 > écran réel ; résolu comme pour `dashboard_screen_test.dart` en élargissant le viewport des
 > tests. `flutter analyze` propre, 246 tests au vert.
+>
+> **Étape 9 — Profil.** `profil_screen.dart` (817 lignes) affichait `'Erreur GPS : $e'` brut
+> quand la détection de position échoue (`_detectLocation()`) — seul vrai gap trouvé : les
+> autres messages d'erreur de l'écran (changement de mot de passe, suppression de compte)
+> viennent déjà de mappers dédiés dans `AuthViewModel` (`_mapChangePasswordError`,
+> `_mapDeleteError`), et celui de l'export RGPD d'un message déjà écrit à la main dans
+> `ExportViewModel` — les trois laissés tels quels, même raisonnement qu'à l'étape 5.
+> `mapErrorToMessage(e, fallback: '…')` consomme ici pour la première fois le paramètre
+> `fallback` : le message générique de repli du mapper aurait perdu le contexte « c'est la
+> géolocalisation qui a échoué » utile à l'utilisateur — le fallback personnalisé le
+> restitue. 4 `IconButton` sans tooltip corrigés (modifier le profil, 3 bascules
+> afficher/masquer mot de passe). Aucun nouveau test (changements additifs) ; les 4 tests
+> existants de l'écran toujours au vert. `flutter analyze` propre, 246 tests au vert.
 
 **Fait**
 

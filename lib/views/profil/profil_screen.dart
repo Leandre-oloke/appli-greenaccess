@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/user_model.dart';
+import '../../utils/error_mapper.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 import '../../viewmodels/export_viewmodel.dart';
 
@@ -74,7 +75,13 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur GPS : $e')),
+          SnackBar(
+            content: Text(mapErrorToMessage(
+              e,
+              fallback:
+                  'Localisation indisponible. Réessayez ou saisissez votre région manuellement.',
+            )),
+          ),
         );
       }
     } finally {
@@ -137,6 +144,7 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
         actions: [
           if (!_editing)
             IconButton(
+              tooltip: 'Modifier le profil',
               icon: const Icon(Icons.edit_outlined),
               onPressed: () => setState(() => _editing = true),
             )
@@ -370,6 +378,7 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
                     labelText: 'Mot de passe actuel',
                     prefixIcon: const Icon(Icons.lock_outline),
                     suffixIcon: IconButton(
+                      tooltip: obscureCurrent ? 'Afficher' : 'Masquer',
                       icon: Icon(obscureCurrent ? Icons.visibility_outlined : Icons.visibility_off_outlined),
                       onPressed: () => setDialogState(() => obscureCurrent = !obscureCurrent),
                     ),
@@ -385,6 +394,7 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
                     labelText: 'Nouveau mot de passe',
                     prefixIcon: const Icon(Icons.lock_outline),
                     suffixIcon: IconButton(
+                      tooltip: obscureNew ? 'Afficher' : 'Masquer',
                       icon: Icon(obscureNew ? Icons.visibility_outlined : Icons.visibility_off_outlined),
                       onPressed: () => setDialogState(() => obscureNew = !obscureNew),
                     ),
@@ -594,6 +604,7 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
                   hintText: 'Mot de passe',
                   prefixIcon: const Icon(Icons.lock_outline),
                   suffixIcon: IconButton(
+                    tooltip: obscure ? 'Afficher' : 'Masquer',
                     icon: Icon(obscure
                         ? Icons.visibility_outlined
                         : Icons.visibility_off_outlined),
