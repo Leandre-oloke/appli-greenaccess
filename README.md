@@ -1182,6 +1182,17 @@ existant a donc pu être instrumenté sans casser un seul test déjà vert.
 > repli générique sinon). Aucun écran existant n'est encore retouché à ce stade — ces
 > composants seront consommés au fil des étapes suivantes (navigation, Dashboard, Formation,
 > Score Climat, Financement, Assurance, Notifications, Profil), chacune committée séparément.
+>
+> **Étape 2 — Navigation.** `MainShell` (`lib/views/shell/main_shell.dart`, coquille des 5
+> onglets partagée par **tous** les écrans, vitrine et legacy) utilisait un
+> `BottomNavigationBar` recoloré à la main via `AppColors`, alors que `AppTheme` définit déjà
+> un `navigationBarTheme` (Material 3) complet sur les tokens — jamais consommé. Bascule vers
+> `NavigationBar`, sans aucun changement de route (`navigationShell.goBranch(...)` identique) ;
+> léger `GaShadows.e1` ajouté au-dessus de la barre pour la détacher du fond crème
+> (`background` ≠ `surface`), cohérent avec le vocabulaire d'élévation du reste du design
+> system. Aucun test ne référençait `MainShell` (écart déjà connu, non comblé ici — risque jugé
+> faible : composant de navigation pur, aucune logique). `flutter analyze` propre, 229 tests
+> toujours au vert, `flutter build web --release` vérifié.
 
 **Fait**
 
