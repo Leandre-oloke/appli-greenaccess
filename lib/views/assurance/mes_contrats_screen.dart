@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/constants/app_colors.dart';
 import '../../routes.dart';
 import '../../models/assurance_model.dart';
+import '../../utils/error_mapper.dart';
 import '../../viewmodels/assurance_viewmodel.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 
@@ -33,7 +34,10 @@ class _MesContratsScreenState extends ConsumerState<MesContratsScreen> {
     ref.listen(assuranceViewModelProvider(uid), (_, next) {
       if (next.error != null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(next.error!), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(mapErrorToMessage(next.error!)),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
         );
       }
     });
@@ -43,6 +47,7 @@ class _MesContratsScreenState extends ConsumerState<MesContratsScreen> {
         title: const Text('Mes contrats'),
         actions: [
           IconButton(
+            tooltip: 'Actualiser',
             icon: const Icon(Icons.refresh),
             onPressed: () {
               if (uid.isNotEmpty) {

@@ -1251,6 +1251,24 @@ existant a donc pu être instrumenté sans casser un seul test déjà vert.
 > rejet, détails) inchangé, hors périmètre de cette étape. 4 nouveaux tests widgets (0 avant ce
 > commit) : progression, étape finale, rejet, demande introuvable. `flutter analyze` propre,
 > 239 tests au vert.
+>
+> **Étape 7 — Assurance : pas de `GaStatusTimeline` pour les sinistres, réévalué en cours de
+> route.** Le plan de Phase 2 supposait un écran de suivi de statut de sinistre à retoucher
+> comme celui du Financement ; en pratique, aucun écran de ce type n'existe — la déclaration
+> de sinistre (`sinistre_form_screen.dart`) est un simple formulaire, et le statut « Sinistre
+> déclaré » n'est qu'un badge sur la carte de contrat (`mes_contrats_screen.dart`). Plutôt que
+> de forcer un composant sans destinataire réel, la vérification du module a été redirigée vers
+> ce qu'elle a effectivement trouvé : `mes_contrats_screen.dart` affichait l'erreur technique
+> brute du ViewModel dans un `SnackBar` teinté d'un `Colors.red` littéral (pas un token) ;
+> `sinistre_form_screen.dart` affichait de même `'Erreur : $erreur'` brut. Les deux consomment
+> désormais `mapErrorToMessage` (étape 1). Tooltip ajouté au bouton d'actualisation (seul
+> `IconButton` du module sans tooltip). Volontairement **non touché** : le violet
+> `Color(0xFF6A1B9A)` utilisé 13 fois dans 5 fichiers du module — vérifié, ce n'est pas un
+> oubli mais un accent de marque délibéré et cohérent pour différencier visuellement le module
+> Assurance (vert forêt ailleurs) ; le reclasser en `AppColors.primary` sortirait du périmètre
+> de cette étape (décision de design produit, pas un bug) et effacerait une différenciation
+> intentionnelle sans que cela ait été demandé. 2 nouveaux tests widgets (0 avant ce commit).
+> `flutter analyze` propre, 241 tests au vert.
 
 **Fait**
 
@@ -1274,17 +1292,18 @@ existant a donc pu être instrumenté sans casser un seul test déjà vert.
 - **CI/CD GitHub Actions** : pipeline `analyze → test → build web / apk debug` sur chaque push
   + workflow de build APK release à la demande (§6ter)
 - Chaîne Android mise à niveau pour Flutter 3.47 (Gradle/AGP/Kotlin)
-- 239 tests `flutter test` répartis sur 4 catégories (détail complet §7) : ~106 tests unitaires
+- 241 tests `flutter test` répartis sur 4 catégories (détail complet §7) : ~106 tests unitaires
   de ViewModels (9 fichiers — Admin/Assurance/Auth/Financement/Formation/Messagerie/
   Notification/Partenaire/Scoring, dont le badge Financé Vert à l'approbation J5.15, et la
-  création de profil à la première connexion par OTP J6.2), 13 widget tests (Login, ScoringForm,
+  création de profil à la première connexion par OTP J6.2), 14 widget tests (Login, ScoringForm,
   ScoreResult, DemandeForm, Dashboard, Financement, Profil, CarteAlea, SimulateurAssurance,
-  MessageriePartenaire, Badges, CourseList, StatutDemande — validation, navigation par étapes,
-  verrou de financement CDC §4.1 et son bonus du badge Assuré Climat (J5.14), connexion
-  Google, entrée vers OTPScreen (J6.2), export RGPD, rendu de carte, ciblage GPS, réduction de
-  prime par score, interface de chat (état vide, bulles par auteur, envoi), export de badges
-  JSON/PDF (J5.16), recherche/filtre par thème (refonte frontend, étape 4), frise
-  d'avancement de dossier (refonte frontend, étape 6), états
+  MessageriePartenaire, Badges, CourseList, StatutDemande, MesContrats — validation, navigation
+  par étapes, verrou de financement CDC §4.1 et son bonus du badge Assuré Climat (J5.14),
+  connexion Google, entrée vers OTPScreen (J6.2), export RGPD, rendu de carte, ciblage GPS,
+  réduction de prime par score, interface de chat (état vide, bulles par auteur, envoi), export
+  de badges JSON/PDF (J5.16), recherche/filtre par thème (refonte frontend, étape 4), frise
+  d'avancement de dossier (refonte frontend, étape 6), erreur traduite sur les contrats
+  d'assurance (refonte frontend, étape 7), états
   d'erreur/chargement), des
   tests de repositories/fonctions utilitaires purs ciblant directement le code métier sans
   passer par un ViewModel (`ExportRepository`, `AuditRepository`, `AssuranceRepository` — dont

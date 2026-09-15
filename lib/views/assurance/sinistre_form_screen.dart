@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../../core/constants/app_colors.dart';
+import '../../utils/error_mapper.dart';
 import '../../viewmodels/assurance_viewmodel.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 
@@ -88,7 +89,7 @@ class _SinistreFormScreenState extends ConsumerState<SinistreFormScreen> {
 
     if (erreur != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur : $erreur'), backgroundColor: AppColors.error),
+        SnackBar(content: Text(mapErrorToMessage(erreur)), backgroundColor: AppColors.error),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
