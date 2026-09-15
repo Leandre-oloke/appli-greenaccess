@@ -1193,6 +1193,20 @@ existant a donc pu être instrumenté sans casser un seul test déjà vert.
 > system. Aucun test ne référençait `MainShell` (écart déjà connu, non comblé ici — risque jugé
 > faible : composant de navigation pur, aucune logique). `flutter analyze` propre, 229 tests
 > toujours au vert, `flutter build web --release` vérifié.
+>
+> **Étape 3 — Dashboard.** Seul écran vitrine concerné par le plan (D) : ajout d'un état de
+> chargement squelette (`GaSkeleton.card`) sur la carte héros du score et la carte Formation
+> pendant le premier chargement (`tracedOperation('dashboard_load', ...)`, J6.6) — jusqu'ici
+> ces deux cartes affichaient directement leur état « vide »/à zéro avant que les données
+> n'arrivent, ce qui pouvait laisser croire à tort qu'aucun score n'existait. L'état de
+> chargement est local à la vue (`_loading`, `ConsumerState`), pas ajouté au `ScoringState`/
+> `FormationState` : aucun ViewModel touché, conformément au plan. Financement/Assurance ne
+> dépendent pas de ce chargement (leurs cartes restent affichées immédiatement, inchangé).
+> Tenté un test dédié à l'état transitoire (`pump()` unique avant `pumpAndSettle()`) : retiré
+> — les repositories fake utilisés par la suite de tests résolvent en un seul passage de la
+> boucle de microtâches, trop vite pour qu'un `pump()` isolé observe l'état intermédiaire de
+> façon fiable ; les 6 tests existants de l'écran couvrent déjà le rendu final sans
+> régression. `flutter analyze` propre, 229 tests toujours au vert.
 
 **Fait**
 

@@ -22,18 +22,27 @@ class DashboardScreen extends ConsumerStatefulWidget {
 }
 
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
+  // État de chargement local à la vue (pas dans un ViewModel) : pilote
+  // uniquement l'affichage d'un GaSkeleton pendant le premier chargement du
+  // score/de la formation, le temps du tracedOperation ci-dessous.
+  bool _loading = true;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       final uid = ref.read(authViewModelProvider).user?.id ?? '';
-      if (uid.isEmpty) return;
+      if (uid.isEmpty) {
+        if (mounted) setState(() => _loading = false);
+        return;
+      }
       // Trace de performance (J6.6, CDC §7.1 · T10) — durée du chargement
       // initial de l'écran clé d'entrée après connexion.
-      tracedOperation('dashboard_load', () => Future.wait([
+      await tracedOperation('dashboard_load', () => Future.wait([
             ref.read(scoringViewModelProvider(uid).notifier).loadLatestScore(),
             ref.read(formationViewModelProvider(uid).notifier).loadCourses(),
           ]));
+      if (mounted) setState(() => _loading = false);
     });
   }
 
@@ -73,14 +82,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   GaSpacing.screenH, GaSpacing.xxl),
               sliver: SliverList.list(
                 children: gaStagger([
-                  _ScoreHero(score: scoring.currentScore),
-                  const SizedBox(height: GaSpacing.xl),
-                  const GaSectionHeader('Accès rapide'),
-                  const _QuickActions(),
-                  const SizedBox(height: GaSpacing.xl),
-                  _FormationCard(
-                      progressPercent: formation.progressPercent,
-                      xp: formation.totalXp),
+                  if (_loading) ...[
+                    GaSkeleton.card(height: 140),
+                    const SizedBox(height: GaSpacing.xl),
+                    const GaSectionHeader('Accès rapide'),
+                    const _QuickActions(),
+                    const SizedBox(height: GaSpacing.xl),
+                    GaSkeleton.card(height: 92),
+                  ] else ...[
+                    _ScoreHero(score: scoring.currentScore),
+                    const SizedBox(height: GaSpacing.xl),
+                    const GaSectionHeader('Accès rapide'),
+                    const _QuickActions(),
+                    const SizedBox(height: GaSpacing.xl),
+                    _FormationCard(
+                        progressPercent: formation.progressPercent,
+                        xp: formation.totalXp),
+                  ],
                   const SizedBox(height: GaSpacing.md),
                   const _FinancementCard(),
                   const SizedBox(height: GaSpacing.md),
