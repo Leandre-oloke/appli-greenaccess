@@ -1225,6 +1225,21 @@ existant a donc pu être instrumenté sans casser un seul test déjà vert.
 > `flutter_animate`), et son ticker ne se désenregistre pas de façon fiable avant la
 > vérification « aucun timer en attente » du test binding en fin de test, même limitation que
 > celle documentée à l'étape 3 pour le Dashboard. `flutter analyze` propre, 235 tests au vert.
+>
+> **Étape 5 — Score Climat : vérification uniquement.** Les 3 écrans du module (formulaire,
+> résultat, historique) font déjà partie des 9 écrans vitrine refondus avant l'audit — aucune
+> retouche structurelle nécessaire. Un point mérite d'être noté : `scoring_form_screen.dart`
+> affiche déjà `ScoringState.error` via `GaInfoBanner`, mais **pas** avec `mapErrorToMessage`
+> de l'étape 1 — volontairement laissé tel quel après vérification. Le message vient en
+> pratique de `ScoreCalculationException` (`score_repository.dart`), un type d'exception dédié
+> au `toString()` déjà rédigé à la main (« Le calcul du score est momentanément indisponible…
+> complétez des formations en attendant »), plus spécifique et plus actionnable que le message
+> générique de repli de `mapErrorToMessage`. Faire passer ce message par le mapper l'aurait
+> donc **dégradé**, pas amélioré — seul le cas d'une exception non prévue perdrait un message
+> spécifique, compromis jugé correct. Deux `IconButton` de retour sans tooltip corrigés
+> (`historique_score_screen.dart`, `score_result_screen.dart`), seul écart réel trouvé. 235
+> tests toujours au vert (aucun nouveau test : changement purement additif, sans nouvelle
+> branche logique).
 
 **Fait**
 

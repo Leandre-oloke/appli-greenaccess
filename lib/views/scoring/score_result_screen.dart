@@ -252,6 +252,7 @@ class ScoreResultScreen extends ConsumerWidget {
                     Row(
                       children: [
                         IconButton(
+                          tooltip: 'Retour',
                           onPressed: () => context.canPop()
                               ? context.pop()
                               : context.go(AppRoutes.dashboard),

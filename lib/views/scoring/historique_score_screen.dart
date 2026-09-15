@@ -44,6 +44,7 @@ class _HistoriqueScoreScreenState
             title: 'Votre progression',
             subtitle: 'Historique du Score Climat ESG',
             leading: IconButton(
+              tooltip: 'Retour',
               onPressed: () => context.canPop()
                   ? context.pop()
                   : context.go(AppRoutes.dashboard),
