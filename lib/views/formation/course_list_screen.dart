@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/course_model.dart';
+import '../../ui/ui.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 import '../../viewmodels/formation_viewmodel.dart';
 
@@ -14,6 +15,10 @@ class CourseListScreen extends ConsumerStatefulWidget {
 }
 
 class _CourseListScreenState extends ConsumerState<CourseListScreen> {
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+  String _selectedTheme = 'Tous';
+
   @override
   void initState() {
     super.initState();
@@ -24,48 +29,100 @@ class _CourseListScreenState extends ConsumerState<CourseListScreen> {
   }
 
   @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final userId = ref.watch(authViewModelProvider).user?.id ?? '';
     final state = ref.watch(formationViewModelProvider(userId));
+
+    final themes = <String>['Tous', ...{for (final c in state.courses) c.theme}]..sort();
+    final filtered = state.courses.where((c) {
+      final matchesTheme = _selectedTheme == 'Tous' || c.theme == _selectedTheme;
+      final q = _query.trim().toLowerCase();
+      final matchesQuery = q.isEmpty ||
+          c.titre.toLowerCase().contains(q) ||
+          c.theme.toLowerCase().contains(q);
+      return matchesTheme && matchesQuery;
+    }).toList();
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Formation'),
         actions: [
           IconButton(
+            tooltip: 'Mes badges',
             icon: const Icon(Icons.emoji_events_outlined),
             onPressed: () => context.push('/formation/badges'),
           ),
         ],
       ),
       body: state.isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                _ProgressHeader(
-                  percent: state.progressPercent,
-                  xp: state.totalXp,
-                  badges: state.badges.length,
-                ),
-                Expanded(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: state.courses.length,
-                    itemBuilder: (context, index) {
-                      final course = state.courses[index];
-                      final progress = state.progress
-                          .where((p) => p.courseId == course.id)
-                          .firstOrNull;
-                      return _CourseCard(
-                        course: course,
-                        progress: progress,
-                        onTap: () => context.push('/formation/${course.id}'),
-                      );
-                    },
+          ? const SingleChildScrollView(
+              padding: EdgeInsets.all(GaSpacing.lg),
+              child: GaSkeletonList(itemCount: 6, itemHeight: 92),
+            )
+          : state.error != null
+              ? Padding(
+                  padding: const EdgeInsets.all(GaSpacing.lg),
+                  child: GaErrorView(
+                    error: state.error!,
+                    onRetry: () => ref
+                        .read(formationViewModelProvider(userId).notifier)
+                        .loadCourses(),
                   ),
+                )
+              : Column(
+                  children: [
+                    _ProgressHeader(
+                      percent: state.progressPercent,
+                      xp: state.totalXp,
+                      badges: state.badges.length,
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                          GaSpacing.lg, GaSpacing.md, GaSpacing.lg, 0),
+                      child: GaFilterBar(
+                        controller: _searchCtrl,
+                        hint: 'Rechercher un cours…',
+                        onChanged: (v) => setState(() => _query = v),
+                        filters: themes,
+                        selectedFilter: _selectedTheme,
+                        onFilterSelected: (v) =>
+                            setState(() => _selectedTheme = v),
+                      ),
+                    ),
+                    Expanded(
+                      child: filtered.isEmpty
+                          ? const GaEmptyState(
+                              icon: Icons.search_off_rounded,
+                              title: 'Aucun cours trouvé',
+                              message:
+                                  'Essayez un autre thème ou une autre recherche.',
+                              compact: true,
+                            )
+                          : ListView.builder(
+                              padding: const EdgeInsets.all(GaSpacing.lg),
+                              itemCount: filtered.length,
+                              itemBuilder: (context, index) {
+                                final course = filtered[index];
+                                final progress = state.progress
+                                    .where((p) => p.courseId == course.id)
+                                    .firstOrNull;
+                                return _CourseCard(
+                                  course: course,
+                                  progress: progress,
+                                  onTap: () =>
+                                      context.push('/formation/${course.id}'),
+                                ).gaFadeSlideUp(order: index.clamp(0, 10));
+                              },
+                            ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
     );
   }
 }

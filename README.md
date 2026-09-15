@@ -1207,6 +1207,24 @@ existant a donc pu être instrumenté sans casser un seul test déjà vert.
 > boucle de microtâches, trop vite pour qu'un `pump()` isolé observe l'état intermédiaire de
 > façon fiable ; les 6 tests existants de l'écran couvrent déjà le rendu final sans
 > régression. `flutter analyze` propre, 229 tests toujours au vert.
+>
+> **Étape 4 — Formation.** `CourseListScreen` (`lib/views/formation/course_list_screen.dart`,
+> 0 test avant ce commit) reçoit `GaFilterBar` (recherche par titre/thème + chips de thème
+> dérivés dynamiquement du catalogue chargé), `GaSkeletonList` pendant le chargement,
+> `GaErrorView` sur `FormationState.error` (jusqu'ici jamais affiché — 1 des 8 ViewModels visés
+> par l'audit, consomme le `mapErrorToMessage` de l'étape 1), `GaEmptyState` dédié quand un
+> filtre ne retourne aucun résultat, tooltip sur le bouton « Mes badges » (jusque-là sans
+> tooltip), et une cascade `gaFadeSlideUp` sur les cartes de cours. A révélé un vrai bug au
+> moment d'écrire les tests : le squelette de chargement (`GaSkeletonList(itemCount: 6, ...)`)
+> était placé dans un simple `Padding`, non scrollable — contrairement à la vraie liste
+> (`ListView.builder`) qu'il remplace pendant le chargement ; sur un petit écran ou avec
+> `itemCount` élevé, il débordait silencieusement en bas de l'écran (`RenderFlex overflowed`).
+> Corrigé en l'enveloppant dans un `SingleChildScrollView`. 6 nouveaux tests widgets (recherche,
+> filtre par thème, état vide dédié, erreur traduite, tooltip) — pas de test dédié à l'état
+> `isLoading` lui-même : `GaSkeleton` anime indéfiniment (shimmer en boucle via
+> `flutter_animate`), et son ticker ne se désenregistre pas de façon fiable avant la
+> vérification « aucun timer en attente » du test binding en fin de test, même limitation que
+> celle documentée à l'étape 3 pour le Dashboard. `flutter analyze` propre, 235 tests au vert.
 
 **Fait**
 
@@ -1230,15 +1248,16 @@ existant a donc pu être instrumenté sans casser un seul test déjà vert.
 - **CI/CD GitHub Actions** : pipeline `analyze → test → build web / apk debug` sur chaque push
   + workflow de build APK release à la demande (§6ter)
 - Chaîne Android mise à niveau pour Flutter 3.47 (Gradle/AGP/Kotlin)
-- 229 tests `flutter test` répartis sur 4 catégories (détail complet §7) : ~106 tests unitaires
+- 235 tests `flutter test` répartis sur 4 catégories (détail complet §7) : ~106 tests unitaires
   de ViewModels (9 fichiers — Admin/Assurance/Auth/Financement/Formation/Messagerie/
   Notification/Partenaire/Scoring, dont le badge Financé Vert à l'approbation J5.15, et la
-  création de profil à la première connexion par OTP J6.2), 11 widget tests (Login, ScoringForm,
+  création de profil à la première connexion par OTP J6.2), 12 widget tests (Login, ScoringForm,
   ScoreResult, DemandeForm, Dashboard, Financement, Profil, CarteAlea, SimulateurAssurance,
-  MessageriePartenaire, Badges — validation, navigation par étapes, verrou de financement CDC
-  §4.1 et son bonus du badge Assuré Climat (J5.14), connexion Google, entrée vers OTPScreen
-  (J6.2), export RGPD, rendu de carte, ciblage GPS, réduction de prime par score, interface de
-  chat (état vide, bulles par auteur, envoi), export de badges JSON/PDF (J5.16), états
+  MessageriePartenaire, Badges, CourseList — validation, navigation par étapes, verrou de
+  financement CDC §4.1 et son bonus du badge Assuré Climat (J5.14), connexion Google, entrée
+  vers OTPScreen (J6.2), export RGPD, rendu de carte, ciblage GPS, réduction de prime par
+  score, interface de chat (état vide, bulles par auteur, envoi), export de badges JSON/PDF
+  (J5.16), recherche/filtre par thème (refonte frontend, étape 4), états
   d'erreur/chargement), des
   tests de repositories/fonctions utilitaires purs ciblant directement le code métier sans
   passer par un ViewModel (`ExportRepository`, `AuditRepository`, `AssuranceRepository` — dont
