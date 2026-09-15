@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/demande_financement_model.dart';
 import '../models/remboursement_model.dart';
+import '../utils/perf_trace.dart';
 import 'audit_repository.dart';
 
 class FinancementRepository {
@@ -11,17 +12,18 @@ class FinancementRepository {
       : _firestore = firestore ?? FirebaseFirestore.instance,
         _audit = audit ?? AuditRepository(firestore: firestore);
 
-  Future<DemandeFinancementModel> submit(DemandeFinancementModel demande) async {
-    final doc = await _firestore
-        .collection('demandes_financement')
-        .add(demande.toFirestore());
-    await _audit.logAction(
-      userId: demande.userId,
-      action: 'financement_soumis',
-      details: {'demandeId': doc.id, 'montant': demande.montant},
-    );
-    return DemandeFinancementModel.fromFirestore(demande.toFirestore(), doc.id);
-  }
+  Future<DemandeFinancementModel> submit(DemandeFinancementModel demande) =>
+      tracedOperation('demande_submission', () async {
+        final doc = await _firestore
+            .collection('demandes_financement')
+            .add(demande.toFirestore());
+        await _audit.logAction(
+          userId: demande.userId,
+          action: 'financement_soumis',
+          details: {'demandeId': doc.id, 'montant': demande.montant},
+        );
+        return DemandeFinancementModel.fromFirestore(demande.toFirestore(), doc.id);
+      });
 
   Future<void> updateStatut(String demandeId, StatutDemande statut, {String? commentaire}) async {
     await _firestore.collection('demandes_financement').doc(demandeId).update({

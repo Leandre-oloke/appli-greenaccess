@@ -51,6 +51,8 @@ dependencies:
   geolocator: ^13.0.1
   equatable: ^2.0.5
   firebase_messaging: ^15.0.0
+  # Traces de performance des écrans/opérations clés (J6.6, CDC §7.1 · T10)
+  firebase_performance: ^0.10.0
   image_picker: ^1.1.2
   pdf: ^3.10.8
   printing: ^5.13.1

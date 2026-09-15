@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_performance/firebase_performance.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -21,6 +22,16 @@ import 'firebase_env.dart';
 const bool kUseEmulator = bool.fromEnvironment('USE_EMULATOR');
 const String kEmulatorHost =
     String.fromEnvironment('EMULATOR_HOST', defaultValue: 'localhost');
+
+// Force la persistance Firestore même avec les émulateurs (J6.5, CDC §7.2 ·
+// T07) : par défaut elle est désactivée avec les émulateurs (voir plus bas)
+// pour éviter un cache local périmé entre deux redémarrages d'émulateur en
+// dev — un souci qui ne se pose pas dans un run E2E Patrol isolé (l'émulateur
+// démarre une seule fois, l'app tourne une seule fois). Flag dédié plutôt que
+// de changer le comportement par défaut : `flutter test
+// -d android --dart-define=USE_EMULATOR=true --dart-define=FORCE_PERSISTENCE=true`
+// (voir patrol_test/t07_hors_ligne_test.dart et .github/workflows/e2e.yml).
+const bool kForcePersistence = bool.fromEnvironment('FORCE_PERSISTENCE');
 
 // Handler background FCM — doit être une fonction top-level
 @pragma('vm:entry-point')
@@ -42,11 +53,16 @@ Future<void> main() async {
   await Firebase.initializeApp(options: currentFirebaseOptions());
 
   // Cache Firestore offline (désactivé avec les émulateurs pour éviter les
-  // incohérences de cache ; sur le Web le cache IndexedDB est géré par le SDK)
+  // incohérences de cache, sauf si FORCE_PERSISTENCE=true — voir T07 ci-dessus ;
+  // sur le Web le cache IndexedDB est géré par le SDK)
   FirebaseFirestore.instance.settings = Settings(
-    persistenceEnabled: !kUseEmulator,
+    persistenceEnabled: !kUseEmulator || kForcePersistence,
     cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
   );
+
+  // Traces de performance des écrans/opérations clés (J6.6, CDC §7.1 · T10) —
+  // voir lib/utils/perf_trace.dart pour l'instrumentation elle-même.
+  await FirebasePerformance.instance.setPerformanceCollectionEnabled(true);
 
   // Émulateurs Firebase locaux (dev / Codespaces)
   if (kUseEmulator) {

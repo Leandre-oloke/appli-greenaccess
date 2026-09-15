@@ -815,7 +815,7 @@ seulement en local) :
    l'émulateur Functions refuse (il exige une version exacte parmi 20/22/24). Corrigé en
    `"20"`.
 
-**Tests E2E** (`patrol_test/`, package [Patrol](https://patrol.leancode.co/), J6.1-J6.3, CDC
+**Tests E2E** (`patrol_test/`, package [Patrol](https://patrol.leancode.co/), J6.1-J6.6, CDC
 §7.1-§7.2) :
 
 Contrairement à `integration_test/` ci-dessus (bloqué sur Chrome web), Patrol pilote un
@@ -843,6 +843,24 @@ Studio/un émulateur (`patrol test`).
   `ScoreRepository.saveScore`) plutôt que rejoués à travers le formulaire de scoring en 5
   étapes — seule l'authentification (email/mot de passe) est pilotée depuis l'UI, l'inscription
   et le calcul de score ayant chacun leur propre test dédié ailleurs.
+- `t05_demande_soumission_test.dart` (J6.4, CDC §7.2 · T05) — dépôt complet d'une demande de
+  financement à travers le vrai formulaire à 7 étapes (même séquence de navigation que
+  `test/widgets/demande_form_screen_test.dart`, pilotée ici sur un appareil réel), jusqu'au
+  statut `soumis` vérifié directement en base. « + notification partenaire » (CDC) : un
+  partenaire financeur est semé en précondition (sans `fcm_token`, aucun envoi FCM réel
+  déclenché — il n'existe pas d'émulateur FCM dans la Firebase Emulator Suite, même contrainte
+  que `functions/test/triggers.test.ts`) ; le ciblage des partenaires à notifier
+  (`getPartenaireFinanceurTokens`) est déjà validé à ce niveau, ce scénario E2E valide ce que lui
+  seul peut valider : le dépôt réel à travers l'UI jusqu'au statut persistant en base.
+- `t07_hors_ligne_test.dart` (J6.5, CDC §7.2 · T07) — un cours consulté en ligne (semé
+  directement dans Firestore, pas un cours de démo bundlé dans `CoursRepository` : ceux-ci ne
+  transitent jamais par Firestore et rendraient le test du cache trivial) reste consultable une
+  fois hors-ligne (`$.native.enableAirplaneMode()`), un quiz peut y être complété hors-ligne
+  (écriture mise en file d'attente localement par le SDK Firestore), puis la progression se
+  synchronise réellement au retour du réseau — confirmé par
+  `FirebaseFirestore.instance.waitForPendingWrites()`, pas un simple délai arbitraire. Nécessite
+  `FORCE_PERSISTENCE=true` (voir plus bas) : sans lui, le contenu ne survivrait jamais au passage
+  hors-ligne — le point même de ce scénario.
 
 En écrivant J6.2 (T01), deux bugs réels de production sont apparus et ont été corrigés :
 
@@ -867,7 +885,34 @@ Emulator Suite sur l'hôte du runner via `10.0.2.2` en HTTP, debug uniquement, j
 release), et `lib/main.dart` (`void main()` → `Future<void> main()` : un `void main() async`
 ne peut pas être `await`é depuis l'extérieur — nécessaire pour que les tests attendent la fin
 réelle du bootstrap Firebase avant d'interagir avec l'app ; aucun changement de comportement en
-production).
+production). Bug réel trouvé au premier push de ce manifeste (CI cassée, `ci.yml` job « build apk
+(debug) ») : le commentaire XML ajouté contenait littéralement `--dart-define`, un double tiret —
+strictement interdit n'importe où dans un commentaire XML (`org.xml.sax.SAXParseException; The
+string "--" is not permitted within comments.`), qui faisait échouer le manifest merger de
+Gradle. Corrigé en reformulant le commentaire sans double tiret ; diagnostiqué dans ce Codespace
+en forçant `JAVA_HOME` sur le JDK 17 installé ici (le JDK 21 par défaut n'expose pas `javac`,
+un défaut d'installation propre à ce Codespace, sans rapport avec le bug lui-même) pour obtenir
+la trace d'erreur complète, la CI ne montrant que le message générique tronqué
+« Error parsing … AndroidManifest.xml » sans la cause exacte.
+
+`FORCE_PERSISTENCE` (J6.5) : la persistance Firestore offline est désactivée par défaut avec les
+émulateurs (`lib/main.dart`, `kUseEmulator`) pour éviter un cache local périmé entre deux
+redémarrages d'émulateur en développement — un souci sans objet pour un run E2E Patrol isolé
+(l'émulateur démarre une seule fois). Nouveau flag dédié `bool.fromEnvironment('FORCE_PERSISTENCE')`
+pour activer la persistance spécifiquement pour T07 (`--dart-define=FORCE_PERSISTENCE=true`,
+voir `.github/workflows/e2e.yml`) sans changer le comportement par défaut ailleurs.
+
+**Traces de performance** (`lib/utils/perf_trace.dart`, J6.6, CDC §7.1 · T10) : SDK
+`firebase_performance` intégré (`FirebasePerformance.instance.setPerformanceCollectionEnabled(true)`
+dans `lib/main.dart`) avec des traces personnalisées sur 3 opérations clés —
+`dashboard_load` (chargement initial de l'écran d'entrée après connexion),
+`score_calculation` (`ScoreRepository.calculate`) et `demande_submission`
+(`FinancementRepository.submit`). `tracedOperation()` est délibérément *best-effort* : elle
+absorbe toute exception venant de `FirebasePerformance.instance` (qui exige
+`Firebase.initializeApp()`, absent des dizaines de tests unitaires/widgets de ce dépôt qui
+construisent des repositories directement avec `fake_cloud_firestore`, sans app Firebase réelle)
+sans jamais faire échouer l'opération elle-même ni altérer sa valeur de retour — un repository
+existant a donc pu être instrumenté sans casser un seul test déjà vert.
 
 ---
 
@@ -1071,17 +1116,27 @@ production).
 > tests unitaires purs déjà écrits en J5.14 — garde-fou contre toute régression de cette
 > incitation croisée.
 
-> **Phase 6 — E2E, performance & livraison (démarrée) : J6.1-J6.3, infrastructure Patrol +
-> premiers scénarios E2E.** Patrol (J6.1, CDC §7.1) configuré et exécutable en CI sur un
-> émulateur Android réel (`e2e.yml`, manuel — §6ter) ; non exécutable dans ce Codespace (aucun
-> `adb`/émulateur disponible ici, voir §7). Scénario T01 (J6.2, CDC §7.2 · T01) : inscription
-> par OTP jusqu'au tableau de bord en moins de 3 s — a révélé et corrigé deux bugs réels : un
-> écran `OTPScreen` jusque-là inaccessible depuis l'interface (route publique déclarée, mais
-> aucun bouton n'y menait) et `AuthViewModel.verifyOtp()` qui ne créait jamais de profil
-> Firestore pour un nouvel inscrit par OTP (tableau de bord vide indéfiniment). Scénario T04
-> (J6.3, CDC §7.2 · T04) : score < 60 → accès au financement bloqué + redirection vers la
-> formation. Détail complet (bugs, infrastructure native Android ajoutée, limite Codespace) en
-> §7.
+> **Phase 6 — E2E, performance & livraison (démarrée) : J6.1-J6.6, infrastructure Patrol,
+> scénarios E2E T01/T04/T05/T07, traces de performance.** Patrol (J6.1, CDC §7.1) configuré et
+> exécutable en CI sur un émulateur Android réel (`e2e.yml`, manuel — §6ter) ; non exécutable
+> dans ce Codespace (aucun `adb`/émulateur disponible ici, voir §7). Scénario T01 (J6.2, CDC
+> §7.2 · T01) : inscription par OTP jusqu'au tableau de bord en moins de 3 s — a révélé et
+> corrigé deux bugs réels : un écran `OTPScreen` jusque-là inaccessible depuis l'interface
+> (route publique déclarée, mais aucun bouton n'y menait) et `AuthViewModel.verifyOtp()` qui ne
+> créait jamais de profil Firestore pour un nouvel inscrit par OTP (tableau de bord vide
+> indéfiniment). Scénario T04 (J6.3, CDC §7.2 · T04) : score < 60 → accès au financement bloqué
+> + redirection vers la formation. Scénario T05 (J6.4, CDC §7.2 · T05) : dépôt complet d'une
+> demande de financement (formulaire à 7 étapes) jusqu'au statut SOUMIS, avec un partenaire
+> financeur en précondition de notification. Scénario T07 (J6.5, CDC §7.2 · T07) : un cours
+> consulté en ligne reste utilisable hors-ligne (cache Firestore), un quiz peut y être complété
+> hors-ligne, la progression se synchronise réellement au retour du réseau — a nécessité un
+> nouveau flag `FORCE_PERSISTENCE` pour activer la persistance offline avec les émulateurs
+> (désactivée par défaut dans ce cas précis, voir §7). Traces de performance (J6.6, CDC §7.1 ·
+> T10) : SDK `firebase_performance` intégré, 3 opérations clés instrumentées de façon
+> best-effort (`dashboard_load`, `score_calculation`, `demande_submission`). Un bug réel
+> supplémentaire (double tiret interdit dans un commentaire XML, cassant le manifest merger de
+> Gradle) a été trouvé et corrigé au premier push de l'infrastructure Patrol — détail complet
+> (bugs, infrastructure native Android ajoutée, limite Codespace) en §7.
 
 **Fait**
 
@@ -1103,7 +1158,7 @@ production).
 - **CI/CD GitHub Actions** : pipeline `analyze → test → build web / apk debug` sur chaque push
   + workflow de build APK release à la demande (§6ter)
 - Chaîne Android mise à niveau pour Flutter 3.47 (Gradle/AGP/Kotlin)
-- 209 tests `flutter test` répartis sur 4 catégories (détail complet §7) : ~106 tests unitaires
+- 211 tests `flutter test` répartis sur 4 catégories (détail complet §7) : ~106 tests unitaires
   de ViewModels (9 fichiers — Admin/Assurance/Auth/Financement/Formation/Messagerie/
   Notification/Partenaire/Scoring, dont le badge Financé Vert à l'approbation J5.15, et la
   création de profil à la première connexion par OTP J6.2), 11 widget tests (Login, ScoringForm,
@@ -1118,7 +1173,8 @@ production).
   le badge Assuré Climat à la souscription, J5.13 —, `CoursRepository` — badges Assuré
   Climat/Financé Vert, nouveau fichier de test —, `MessagerieRepository`,
   `export_formatters.dart`, `eligibilite_financement.dart` — règle 4.1, J5.14 —,
-  `badge_export_formatters.dart` — export JSON/PDF, J5.16, nouvelle catégorie depuis J3.4), et 4
+  `badge_export_formatters.dart` — export JSON/PDF, J5.16 —, `perf_trace.dart` — traces
+  best-effort, J6.6, nouvelle catégorie depuis J3.4), et 4
   scénarios d'intégration (RGPD export+suppression J3.9, carte→produit paramétrique T06 J4.14,
   conversation demandeur/partenaire J5.9, règle +10 d'éligibilité du badge Assuré Climat J5.18)
   + smoke test du design system, exécutés en CI ; ont révélé et corrigé 3 bugs réels de

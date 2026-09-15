@@ -154,7 +154,8 @@ jobs:
           disable-animations: true
           script: |
             export PATH="$PATH:$HOME/.pub-cache/bin"
-            patrol test --dart-define=USE_EMULATOR=true --dart-define=EMULATOR_HOST=10.0.2.2
+            patrol test --dart-define=USE_EMULATOR=true --dart-define=EMULATOR_HOST=10.0.2.2 \
+              --dart-define=FORCE_PERSISTENCE=true
 
       - name: Logs des émulateurs Firebase (si échec)
         if: failure()

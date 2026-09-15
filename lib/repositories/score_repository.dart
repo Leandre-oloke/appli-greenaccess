@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import '../models/score_climat_model.dart';
+import '../utils/perf_trace.dart';
 
 /// CDC §4.4 — règle absolue : « le calcul n'est jamais effectué côté client ».
 /// Désactivé par défaut : n'active ce repli que pour du développement local
@@ -36,7 +37,10 @@ class ScoreRepository {
   /// Si elle est injoignable : repli local uniquement si
   /// [kAllowLocalScoreFallback] est activé (dev only) ; sinon lève
   /// [ScoreCalculationException] avec un message affichable tel quel.
-  Future<ScoreClimatModel> calculate(String userId, Map<String, dynamic> inputs) async {
+  Future<ScoreClimatModel> calculate(String userId, Map<String, dynamic> inputs) =>
+      tracedOperation('score_calculation', () => _calculate(userId, inputs));
+
+  Future<ScoreClimatModel> _calculate(String userId, Map<String, dynamic> inputs) async {
     try {
       final callable = _functions.httpsCallable(
         'calculerScoreClimat',

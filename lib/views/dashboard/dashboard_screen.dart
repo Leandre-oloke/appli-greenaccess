@@ -7,6 +7,7 @@ import '../../core/providers/theme_mode_provider.dart';
 import '../../models/score_climat_model.dart';
 import '../../routes.dart';
 import '../../ui/ui.dart';
+import '../../utils/perf_trace.dart';
 import '../../viewmodels/assurance_viewmodel.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 import '../../viewmodels/formation_viewmodel.dart';
@@ -27,8 +28,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final uid = ref.read(authViewModelProvider).user?.id ?? '';
       if (uid.isEmpty) return;
-      ref.read(scoringViewModelProvider(uid).notifier).loadLatestScore();
-      ref.read(formationViewModelProvider(uid).notifier).loadCourses();
+      // Trace de performance (J6.6, CDC §7.1 · T10) — durée du chargement
+      // initial de l'écran clé d'entrée après connexion.
+      tracedOperation('dashboard_load', () => Future.wait([
+            ref.read(scoringViewModelProvider(uid).notifier).loadLatestScore(),
+            ref.read(formationViewModelProvider(uid).notifier).loadCourses(),
+          ]));
     });
   }
 
