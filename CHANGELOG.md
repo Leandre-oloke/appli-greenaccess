@@ -7,6 +7,39 @@ Pour le détail tâche par tâche (bugs trouvés, décisions de conception, limi
 voir `README.md` §7 (Tests) et §8 (État d'avancement) — ce fichier reste volontairement
 condensé, au niveau des phases du plan d'implémentation du CDC.
 
+## [Unreleased] — Refonte frontend premium (Phase 3/3, hors plan CDC J1-J6)
+
+Passe de qualité visuelle/UX sur les 32 écrans encore hors du design system
+« Organic Fintech » livré avec le MVV (9/41 écrans vitrine à l'époque) — sans
+toucher la logique métier, Firebase, Riverpod ni les modèles existants.
+Phase 1 (audit) et Phase 2 (plan classé CRITIQUE/IMPORTANT/NICE TO HAVE)
+livrées séparément ; Phase 3 (implémentation, 12 étapes) terminée. Détail
+tâche par tâche : `README.md` §8.
+
+### Ajouté
+
+- 5 nouveaux composants du design system (`GaListTile`, `GaStatusTimeline`,
+  `GaFilterBar`, `GaFormCard`, `GaErrorView`), portant le total à 22 ;
+  `lib/utils/error_mapper.dart` (`mapErrorToMessage`), point d'entrée unique
+  de traduction erreur technique → message utilisateur.
+- Navigation principale migrée sur `NavigationBar` (Material 3) en tokens.
+- Recherche/filtre (`GaFilterBar`) sur Formation et Notifications ; frise de
+  statut (`GaStatusTimeline`) sur le suivi de demande de financement ; état
+  de chargement squelette sur le Dashboard et Formation.
+- Largeur de contenu contrainte (`GaBreakpoints.maxContent`) sur 4 écrans à
+  liste/détail, pour rester lisible sur un large viewport web.
+
+### Corrigé
+
+- Dashboard : chargement du score/de la formation dépourvu de tout retour
+  visuel avant l'arrivée des données (affichait l'état "vide" par défaut).
+- Formation : squelette de chargement placé dans un conteneur non
+  scrollable — débordait silencieusement sur petit écran.
+- Une dizaine d'écrans affichaient encore l'erreur technique brute
+  (`e.toString()`) d'un ViewModel directement à l'utilisateur.
+- 19 `IconButton` sans tooltip (accessibilité) corrigés à travers
+  l'application.
+
 ## [v0.9.0-mvp] — Phases 1 à 6 (J1.1 à J6.10)
 
 Première version distribuée aux testeurs (Firebase App Distribution). Couvre

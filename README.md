@@ -104,8 +104,13 @@ Navigation : `StatefulShellRoute.indexedStack` pour le shell utilisateur (5 ongl
 (construit depuis `lib/ui/theme/`) et garde `AppColors` avec les mêmes noms mais des valeurs
 repointées sur les jetons du design system, pour que les écrans non encore refondus héritent
 de la palette. 9 écrans vitrine sont refondus de bout en bout (splash, onboarding, login,
-register, otp, dashboard, scoring, résultat de score, historique) ; les autres héritent du
-thème sans refonte de layout — détail dans `lib/ui/ui.dart`.
+register, otp, dashboard, scoring, résultat de score, historique). Une refonte frontend
+ultérieure (§8, « Refonte frontend premium ») a retouché 8 écrans supplémentaires sans les
+porter au même niveau de finition vitrine (pas de bandeau héros dédié ni de transitions
+`Hero`) : `MainShell`/navigation, dashboard (squelette de chargement), Formation, Financement
+(suivi de statut), Assurance, Notifications, Profil, Score Climat (vérification/tooltips).
+Les 25 écrans restants héritent du thème sans retouche de layout — détail dans
+`lib/ui/ui.dart`.
 
 ---
 
@@ -1336,6 +1341,23 @@ existant a donc pu être instrumenté sans casser un seul test déjà vert.
 > grille par breakpoint y aurait un rapport risque/bénéfice disproportionné pour cette passe —
 > notée pour une tâche dédiée plutôt que bâclée ici. `flutter analyze` propre, 246 tests au
 > vert.
+>
+> **Étape 12 — Polish final : Refonte frontend premium terminée (12/12 étapes).**
+> `flutter analyze` propre (11 infos pré-existantes, 0 nouvelle), 246 tests `flutter test` au
+> vert, `flutter build web --release` vérifié. QA visuelle clair/sombre dans un navigateur
+> **non effectuée** — ce Codespace ne donne accès qu'à la ligne de commande, aucune capture
+> d'écran ni rendu visuel n'a pu être inspecté à aucune étape de cette mission ; chaque étape a
+> donc été validée par analyse statique + tests automatisés + build de production, pas par une
+> revue visuelle. `CHANGELOG.md` mis à jour (entrée `[Unreleased]` dédiée à cette mission).
+> Bilan chiffré vs l'audit initial (Phase 1) : composants `Ga*` 17 → 22, écrans avec un état de
+> chargement squelette 1/41 → 3/41 (Dashboard, Formation, Notifications), `IconButton` sans
+> tooltip 28/39 → 9/39 (les 9 restants sur des écrans admin non touchés par cette mission,
+> hors des 12 étapes planifiées), ViewModels dont l'erreur est encore affichée brute côté vue
+> 8/10 → 0/10 constatée sur les chemins effectivement retouchés (le reste, non audité
+> spécifiquement, peut encore en contenir — cette mission a fermé les cas trouvés, pas fait un
+> audit exhaustif final). PR #1 (`feat/design-system-overhaul` → `main`) toujours ouverte, non
+> mergée — aucune action prise dessus au cours de cette mission, en l'absence de demande en ce
+> sens.
 
 **Fait**
 
