@@ -206,50 +206,55 @@ class _DemandeDetail extends StatelessWidget {
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _HeaderCard(demande: demande),
-          const SizedBox(height: 16),
-          if (isRejete) _RejectionCard(motif: demande.commentaireRejet)
-          else _TimelineCard(currentIndex: _currentStepIndex),
-          const SizedBox(height: 16),
-          _DetailsCard(demande: demande),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: GaBreakpoints.maxContent),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _HeaderCard(demande: demande),
+              const SizedBox(height: 16),
+              if (isRejete) _RejectionCard(motif: demande.commentaireRejet)
+              else _TimelineCard(currentIndex: _currentStepIndex),
+              const SizedBox(height: 16),
+              _DetailsCard(demande: demande),
 
-          // ── Actions disponibles quand approuvé ou financé ─────────────
-          if (_isApprouve) ...[
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.picture_as_pdf_outlined),
-              label: const Text('Télécharger le contrat PDF'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              onPressed: () => _exportContratPdf(context),
-            ),
-            if (isFinance) ...[
-              const SizedBox(height: 10),
-              OutlinedButton.icon(
-                icon: const Icon(Icons.calendar_month_outlined),
-                label: const Text('Voir les remboursements'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.primary,
-                  side: const BorderSide(color: AppColors.primary),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              // ── Actions disponibles quand approuvé ou financé ─────────────
+              if (_isApprouve) ...[
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.picture_as_pdf_outlined),
+                  label: const Text('Télécharger le contrat PDF'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: () => _exportContratPdf(context),
                 ),
-                onPressed: () => context.push(
-                  AppRoutes.remboursementsPath(demande.id),
-                  extra: demande.montant,
-                ),
-              ),
+                if (isFinance) ...[
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.calendar_month_outlined),
+                    label: const Text('Voir les remboursements'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.primary,
+                      side: const BorderSide(color: AppColors.primary),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onPressed: () => context.push(
+                      AppRoutes.remboursementsPath(demande.id),
+                      extra: demande.montant,
+                    ),
+                  ),
+                ],
+              ],
+              const SizedBox(height: 24),
             ],
-          ],
-          const SizedBox(height: 24),
-        ],
+          ),
+        ),
       ),
     );
   }

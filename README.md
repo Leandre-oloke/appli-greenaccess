@@ -1319,6 +1319,23 @@ existant a donc pu être instrumenté sans casser un seul test déjà vert.
 > 246 tests existants (aucune régression) et sur le fait qu'ajouter un `tooltip` ou traduire
 > un message d'erreur ne peut pas casser un test qui ne les asserte pas déjà. `flutter
 > analyze` propre.
+>
+> **Étape 11 — Responsive.** `GaBreakpoints.maxContent` (640 px) appliqué aux 4 écrans à
+> liste/détail retouchés lors des étapes 4, 6, 7, 8 (`course_list_screen.dart`,
+> `statut_demande_screen.dart`, `mes_contrats_screen.dart`, `notifications_screen.dart`) —
+> jusqu'ici seuls 3 écrans (les formulaires d'authentification) utilisaient les tokens de
+> point de rupture, contre 9 écrans vitrine au total ; le contenu de ces écrans s'étirait
+> bord à bord sur un large viewport web au lieu de rester lisible en colonne centrée.
+> `_ProgressHeader` (bandeau coloré plein écran de Formation) volontairement laissé hors
+> contrainte — un bandeau héros doit rester plein-bleed, seul le contenu qu'il surplombe est
+> centré. `RefreshIndicator` de `MesContratsScreen` continue de fonctionner : `ConstrainedBox`
+> n'interrompt pas la détection du `Scrollable` descendant. Sur les viewports de test (~400-
+> 800px, sous le seuil de 640px), la contrainte ne change rien au rendu — c'est pourquoi les
+> 17 tests widgets des 4 écrans passent sans modification. Grilles responsive des listes admin
+> (2e volet prévu par le plan) **non traitées** : 0 test existant sur les écrans admin, et une
+> grille par breakpoint y aurait un rapport risque/bénéfice disproportionné pour cette passe —
+> notée pour une tâche dédiée plutôt que bâclée ici. `flutter analyze` propre, 246 tests au
+> vert.
 
 **Fait**
 

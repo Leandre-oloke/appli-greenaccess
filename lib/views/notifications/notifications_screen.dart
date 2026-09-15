@@ -74,48 +74,54 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                 )
               : state.notifications.isEmpty
                   ? const _EmptyState()
-                  : Column(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(
-                              GaSpacing.lg, GaSpacing.md, GaSpacing.lg, 0),
-                          child: GaFilterBar(
-                            controller: _searchCtrl,
-                            hint: 'Rechercher une notification…',
-                            onChanged: (v) => setState(() => _query = v),
-                            filters: _kFilterLabels.keys.toList(),
-                            selectedFilter: _selectedFilter,
-                            onFilterSelected: (v) =>
-                                setState(() => _selectedFilter = v),
-                          ),
+                  : Center(
+                      child: ConstrainedBox(
+                        constraints:
+                            const BoxConstraints(maxWidth: GaBreakpoints.maxContent),
+                        child: Column(
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                  GaSpacing.lg, GaSpacing.md, GaSpacing.lg, 0),
+                              child: GaFilterBar(
+                                controller: _searchCtrl,
+                                hint: 'Rechercher une notification…',
+                                onChanged: (v) => setState(() => _query = v),
+                                filters: _kFilterLabels.keys.toList(),
+                                selectedFilter: _selectedFilter,
+                                onFilterSelected: (v) =>
+                                    setState(() => _selectedFilter = v),
+                              ),
+                            ),
+                            Expanded(
+                              child: filtered.isEmpty
+                                  ? const GaEmptyState(
+                                      icon: Icons.search_off_rounded,
+                                      title: 'Aucun résultat',
+                                      message:
+                                          'Essayez un autre filtre ou une autre recherche.',
+                                      compact: true,
+                                    )
+                                  : ListView.separated(
+                                      padding: const EdgeInsets.symmetric(vertical: 8),
+                                      itemCount: filtered.length,
+                                      separatorBuilder: (_, __) => const Divider(
+                                          height: 1, indent: 16, endIndent: 16),
+                                      itemBuilder: (context, index) {
+                                        final notif = filtered[index];
+                                        final isNew =
+                                            notif.createdAt.isAfter(state.lastReadAt);
+                                        return _NotifTile(
+                                          notif: notif,
+                                          isNew: isNew,
+                                          onTap: () => _showDetail(context, notif),
+                                        );
+                                      },
+                                    ),
+                            ),
+                          ],
                         ),
-                        Expanded(
-                          child: filtered.isEmpty
-                              ? const GaEmptyState(
-                                  icon: Icons.search_off_rounded,
-                                  title: 'Aucun résultat',
-                                  message:
-                                      'Essayez un autre filtre ou une autre recherche.',
-                                  compact: true,
-                                )
-                              : ListView.separated(
-                                  padding: const EdgeInsets.symmetric(vertical: 8),
-                                  itemCount: filtered.length,
-                                  separatorBuilder: (_, __) => const Divider(
-                                      height: 1, indent: 16, endIndent: 16),
-                                  itemBuilder: (context, index) {
-                                    final notif = filtered[index];
-                                    final isNew =
-                                        notif.createdAt.isAfter(state.lastReadAt);
-                                    return _NotifTile(
-                                      notif: notif,
-                                      isNew: isNew,
-                                      onTap: () => _showDetail(context, notif),
-                                    );
-                                  },
-                                ),
-                        ),
-                      ],
+                      ),
                     ),
     );
   }

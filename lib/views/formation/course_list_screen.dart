@@ -82,44 +82,56 @@ class _CourseListScreenState extends ConsumerState<CourseListScreen> {
                       xp: state.totalXp,
                       badges: state.badges.length,
                     ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                          GaSpacing.lg, GaSpacing.md, GaSpacing.lg, 0),
-                      child: GaFilterBar(
-                        controller: _searchCtrl,
-                        hint: 'Rechercher un cours…',
-                        onChanged: (v) => setState(() => _query = v),
-                        filters: themes,
-                        selectedFilter: _selectedTheme,
-                        onFilterSelected: (v) =>
-                            setState(() => _selectedTheme = v),
-                      ),
-                    ),
                     Expanded(
-                      child: filtered.isEmpty
-                          ? const GaEmptyState(
-                              icon: Icons.search_off_rounded,
-                              title: 'Aucun cours trouvé',
-                              message:
-                                  'Essayez un autre thème ou une autre recherche.',
-                              compact: true,
-                            )
-                          : ListView.builder(
-                              padding: const EdgeInsets.all(GaSpacing.lg),
-                              itemCount: filtered.length,
-                              itemBuilder: (context, index) {
-                                final course = filtered[index];
-                                final progress = state.progress
-                                    .where((p) => p.courseId == course.id)
-                                    .firstOrNull;
-                                return _CourseCard(
-                                  course: course,
-                                  progress: progress,
-                                  onTap: () =>
-                                      context.push('/formation/${course.id}'),
-                                ).gaFadeSlideUp(order: index.clamp(0, 10));
-                              },
-                            ),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints:
+                              const BoxConstraints(maxWidth: GaBreakpoints.maxContent),
+                          child: Column(
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                    GaSpacing.lg, GaSpacing.md, GaSpacing.lg, 0),
+                                child: GaFilterBar(
+                                  controller: _searchCtrl,
+                                  hint: 'Rechercher un cours…',
+                                  onChanged: (v) => setState(() => _query = v),
+                                  filters: themes,
+                                  selectedFilter: _selectedTheme,
+                                  onFilterSelected: (v) =>
+                                      setState(() => _selectedTheme = v),
+                                ),
+                              ),
+                              Expanded(
+                                child: filtered.isEmpty
+                                    ? const GaEmptyState(
+                                        icon: Icons.search_off_rounded,
+                                        title: 'Aucun cours trouvé',
+                                        message:
+                                            'Essayez un autre thème ou une autre recherche.',
+                                        compact: true,
+                                      )
+                                    : ListView.builder(
+                                        padding: const EdgeInsets.all(GaSpacing.lg),
+                                        itemCount: filtered.length,
+                                        itemBuilder: (context, index) {
+                                          final course = filtered[index];
+                                          final progress = state.progress
+                                              .where((p) => p.courseId == course.id)
+                                              .firstOrNull;
+                                          return _CourseCard(
+                                            course: course,
+                                            progress: progress,
+                                            onTap: () => context
+                                                .push('/formation/${course.id}'),
+                                          ).gaFadeSlideUp(order: index.clamp(0, 10));
+                                        },
+                                      ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),

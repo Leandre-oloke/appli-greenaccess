@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/constants/app_colors.dart';
 import '../../routes.dart';
 import '../../models/assurance_model.dart';
+import '../../ui/ui.dart';
 import '../../utils/error_mapper.dart';
 import '../../viewmodels/assurance_viewmodel.dart';
 import '../../viewmodels/auth_viewmodel.dart';
@@ -79,10 +80,16 @@ class _MesContratsScreenState extends ConsumerState<MesContratsScreen> {
                         child: _EmptyContrats(),
                       ),
                     )
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: state.contrats.length,
-                      itemBuilder: (_, i) => _ContratCard(contrat: state.contrats[i]),
+                  : Center(
+                      child: ConstrainedBox(
+                        constraints:
+                            const BoxConstraints(maxWidth: GaBreakpoints.maxContent),
+                        child: ListView.builder(
+                          padding: const EdgeInsets.all(16),
+                          itemCount: state.contrats.length,
+                          itemBuilder: (_, i) => _ContratCard(contrat: state.contrats[i]),
+                        ),
+                      ),
                     ),
             ),
     );
