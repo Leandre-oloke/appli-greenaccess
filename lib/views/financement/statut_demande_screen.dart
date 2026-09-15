@@ -8,6 +8,7 @@ import 'package:printing/printing.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/demande_financement_model.dart';
 import '../../routes.dart';
+import '../../ui/ui.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 import '../../viewmodels/financement_viewmodel.dart';
 
@@ -318,12 +319,6 @@ class _TimelineCard extends StatelessWidget {
   const _TimelineCard({required this.currentIndex});
 
   static const _labels = ['Soumis', 'En examen', 'Approuvé', 'Financé'];
-  static const _icons = [
-    Icons.send_outlined,
-    Icons.search_outlined,
-    Icons.check_circle_outline,
-    Icons.payments_outlined,
-  ];
   static const _descriptions = [
     'Votre demande a été reçue',
     'Un analyste étudie votre dossier',
@@ -333,77 +328,30 @@ class _TimelineCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Avancement du dossier',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-            const SizedBox(height: 16),
-            ...List.generate(_labels.length, (i) {
-              final done = i <= currentIndex;
-              final active = i == currentIndex;
-              return _TimelineStep(
-                icon: _icons[i],
-                label: _labels[i],
-                description: _descriptions[i],
-                done: done,
-                active: active,
-                isLast: i == _labels.length - 1,
-              );
-            }),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _TimelineStep extends StatelessWidget {
-  final IconData icon;
-  final String label, description;
-  final bool done, active, isLast;
-  const _TimelineStep({
-    required this.icon, required this.label, required this.description,
-    required this.done, required this.active, required this.isLast,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final color = done ? AppColors.primary : AppColors.divider;
-    return IntrinsicHeight(
-      child: Row(
+    return GaCard(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Column(
-            children: [
-              CircleAvatar(
-                radius: 18,
-                backgroundColor: color.withValues(alpha: 0.15),
-                child: Icon(icon, size: 18, color: color),
-              ),
-              if (!isLast)
-                Expanded(child: Container(width: 2, color: done ? AppColors.primary.withValues(alpha: 0.3) : AppColors.divider)),
+          Text('Avancement du dossier', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: GaSpacing.md),
+          GaStatusTimeline(
+            steps: [
+              for (var i = 0; i < _labels.length; i++)
+                GaTimelineStep(
+                  label: _labels[i],
+                  subtitle: _descriptions[i],
+                  // Le dernier jalon atteint ("Financé") n'a plus rien à
+                  // attendre : traité comme "done" plutôt que "current"
+                  // (qui suggère une étape encore en cours).
+                  state: i < currentIndex
+                      ? GaTimelineStepState.done
+                      : i == currentIndex
+                          ? (i == _labels.length - 1
+                              ? GaTimelineStepState.done
+                              : GaTimelineStepState.current)
+                          : GaTimelineStepState.pending,
+                ),
             ],
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(bottom: isLast ? 0 : 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(label,
-                      style: TextStyle(
-                        fontWeight: active ? FontWeight.bold : FontWeight.w500,
-                        color: done ? AppColors.textPrimary : AppColors.textSecondary,
-                      )),
-                  Text(description, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                ],
-              ),
-            ),
           ),
         ],
       ),

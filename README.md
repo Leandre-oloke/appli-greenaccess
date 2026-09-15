@@ -1240,6 +1240,17 @@ existant a donc pu être instrumenté sans casser un seul test déjà vert.
 > (`historique_score_screen.dart`, `score_result_screen.dart`), seul écart réel trouvé. 235
 > tests toujours au vert (aucun nouveau test : changement purement additif, sans nouvelle
 > branche logique).
+>
+> **Étape 6 — Financement.** `StatutDemandeScreen` avait sa propre frise d'avancement
+> dupliquée à la main (`_TimelineCard`/`_TimelineStep`, ~90 lignes) — remplacée par
+> `GaStatusTimeline` (créé à l'étape 1, premier vrai consommateur). Au passage, sémantique
+> légèrement affinée : l'étape courante distingue maintenant « en cours » (`current`, anneau)
+> de « terminée » (`done`, coche) — l'ancien code coloriait les deux identiquement — sauf le
+> dernier jalon (« Financé ») qui n'a plus rien à attendre et reste traité comme `done` dès
+> qu'il est atteint. Le reste de l'écran (carte d'en-tête, export PDF du contrat, carte de
+> rejet, détails) inchangé, hors périmètre de cette étape. 4 nouveaux tests widgets (0 avant ce
+> commit) : progression, étape finale, rejet, demande introuvable. `flutter analyze` propre,
+> 239 tests au vert.
 
 **Fait**
 
@@ -1263,16 +1274,17 @@ existant a donc pu être instrumenté sans casser un seul test déjà vert.
 - **CI/CD GitHub Actions** : pipeline `analyze → test → build web / apk debug` sur chaque push
   + workflow de build APK release à la demande (§6ter)
 - Chaîne Android mise à niveau pour Flutter 3.47 (Gradle/AGP/Kotlin)
-- 235 tests `flutter test` répartis sur 4 catégories (détail complet §7) : ~106 tests unitaires
+- 239 tests `flutter test` répartis sur 4 catégories (détail complet §7) : ~106 tests unitaires
   de ViewModels (9 fichiers — Admin/Assurance/Auth/Financement/Formation/Messagerie/
   Notification/Partenaire/Scoring, dont le badge Financé Vert à l'approbation J5.15, et la
-  création de profil à la première connexion par OTP J6.2), 12 widget tests (Login, ScoringForm,
+  création de profil à la première connexion par OTP J6.2), 13 widget tests (Login, ScoringForm,
   ScoreResult, DemandeForm, Dashboard, Financement, Profil, CarteAlea, SimulateurAssurance,
-  MessageriePartenaire, Badges, CourseList — validation, navigation par étapes, verrou de
-  financement CDC §4.1 et son bonus du badge Assuré Climat (J5.14), connexion Google, entrée
-  vers OTPScreen (J6.2), export RGPD, rendu de carte, ciblage GPS, réduction de prime par
-  score, interface de chat (état vide, bulles par auteur, envoi), export de badges JSON/PDF
-  (J5.16), recherche/filtre par thème (refonte frontend, étape 4), états
+  MessageriePartenaire, Badges, CourseList, StatutDemande — validation, navigation par étapes,
+  verrou de financement CDC §4.1 et son bonus du badge Assuré Climat (J5.14), connexion
+  Google, entrée vers OTPScreen (J6.2), export RGPD, rendu de carte, ciblage GPS, réduction de
+  prime par score, interface de chat (état vide, bulles par auteur, envoi), export de badges
+  JSON/PDF (J5.16), recherche/filtre par thème (refonte frontend, étape 4), frise
+  d'avancement de dossier (refonte frontend, étape 6), états
   d'erreur/chargement), des
   tests de repositories/fonctions utilitaires purs ciblant directement le code métier sans
   passer par un ViewModel (`ExportRepository`, `AuditRepository`, `AssuranceRepository` — dont
