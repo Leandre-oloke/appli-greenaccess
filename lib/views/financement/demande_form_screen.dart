@@ -682,7 +682,7 @@ Widget _field(String label, {Key? key, required String initialValue, required vo
 
 Widget _dropdown(String label, {required String value, required List<String> items, required void Function(String?) onChanged}) {
   return DropdownButtonFormField<String>(
-    value: value,
+    initialValue: value,
     decoration: InputDecoration(labelText: label),
     items: items.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
     onChanged: onChanged,

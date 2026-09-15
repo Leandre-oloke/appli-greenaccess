@@ -1116,7 +1116,7 @@ existant a donc pu être instrumenté sans casser un seul test déjà vert.
 > tests unitaires purs déjà écrits en J5.14 — garde-fou contre toute régression de cette
 > incitation croisée.
 
-> **Phase 6 — E2E, performance & livraison (démarrée) : J6.1-J6.6, infrastructure Patrol,
+> **Phase 6 — E2E, performance & livraison (démarrée) : J6.1-J6.9, infrastructure Patrol,
 > scénarios E2E T01/T04/T05/T07, traces de performance.** Patrol (J6.1, CDC §7.1) configuré et
 > exécutable en CI sur un émulateur Android réel (`e2e.yml`, manuel — §6ter) ; non exécutable
 > dans ce Codespace (aucun `adb`/émulateur disponible ici, voir §7). Scénario T01 (J6.2, CDC
@@ -1137,6 +1137,30 @@ existant a donc pu être instrumenté sans casser un seul test déjà vert.
 > supplémentaire (double tiret interdit dans un commentaire XML, cassant le manifest merger de
 > Gradle) a été trouvé et corrigé au premier push de l'infrastructure Patrol — détail complet
 > (bugs, infrastructure native Android ajoutée, limite Codespace) en §7.
+>
+> Pagination du tableau de bord (J6.7, CDC §7.1 · T10) : `FormationViewModel.loadCourses()`
+> enchaînait 3 lectures Firestore indépendantes (cours, progression, badges) en séquence au
+> lieu de les paralléliser — corrigé via `Future.wait`, réduit d'environ 3x le temps passé en
+> aller-retour réseau au premier rendu. Bornes défensives (`.limit(200)`) ajoutées sur les 3
+> requêtes, sans effet sur le catalogue actuel (quelques dizaines de cours), pour éviter une
+> dégradation si le catalogue grossit significativement — une pagination complète par curseur
+> n'était pas nécessaire à l'échelle réelle de l'app et aurait cassé le calcul des agrégats
+> (score de progression, XP total) qui dépendent de l'ensemble des documents, pas d'une page.
+>
+> Nettoyage des lints (J6.8, CDC §9) : `flutter analyze` ne comptait déjà aucun avertissement
+> réel (uniquement des infos `deprecated_member_use` pré-existantes) — 10 occurrences de
+> `DropdownButtonFormField`/`TextFormField` migrées de `value:` vers `initialValue:` (renommage
+> mécanique sûr, même sémantique, explicitement recommandé par le message de dépréciation
+> Flutter lui-même), ramenant le compte de 21 à 11 infos. Les infos restantes (migration
+> `Switch.activeColor`→`activeThumbColor`, `Radio`/`RadioListTile`→`RadioGroup`,
+> `ReorderableListView.onReorder`→`onReorderItem`) changent la forme de l'API (pas un simple
+> renommage) et restent hors du périmètre de cette tâche à 0,5 h — délibérément non touchées
+> pour éviter un risque de régression de comportement sur des écrans non couverts par un widget
+> test.
+>
+> Documentation (J6.9) : `CHANGELOG.md` créé (nouveau fichier, format condensé par phase plutôt
+> que tâche par tâche — le détail complet reste ici, en §7/§8), section 8 de ce README tenue à
+> jour au fil de l'eau depuis le début du projet.
 
 **Fait**
 

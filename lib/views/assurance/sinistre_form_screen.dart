@@ -143,7 +143,7 @@ class _SinistreFormScreenState extends ConsumerState<SinistreFormScreen> {
                 style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
-              value: _typeSinistre,
+              initialValue: _typeSinistre,
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.warning_amber_outlined),

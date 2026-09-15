@@ -333,7 +333,7 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
     required void Function(String?) onChanged,
   }) {
     return DropdownButtonFormField<String>(
-      value: value,
+      initialValue: value,
       decoration: InputDecoration(
         labelText: label,
         filled: true,

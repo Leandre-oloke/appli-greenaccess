@@ -9,11 +9,17 @@ class CoursRepository {
   CoursRepository({FirebaseFirestore? firestore})
       : _firestore = firestore ?? FirebaseFirestore.instance;
 
+  // J6.7 (CDC §7.1 · T10) — borne défensive : sans effet sur le catalogue
+  // actuel (quelques dizaines de cours au plus), garde le premier rendu du
+  // tableau de bord rapide si le catalogue grossit significativement.
+  static const _defensiveLimit = 200;
+
   Future<List<CourseModel>> fetchAll() async {
     try {
       final snapshot = await _firestore
           .collection('courses')
           .where('actif', isEqualTo: true)
+          .limit(_defensiveLimit)
           .get();
       if (snapshot.docs.isNotEmpty) {
         return snapshot.docs
@@ -197,6 +203,7 @@ class CoursRepository {
         .collection('users')
         .doc(userId)
         .collection('progress')
+        .limit(_defensiveLimit)
         .get();
     return snapshot.docs
         .map((doc) => CourseProgress.fromFirestore(doc.data(), doc.id))
@@ -208,6 +215,7 @@ class CoursRepository {
         .collection('users')
         .doc(userId)
         .collection('badges')
+        .limit(_defensiveLimit)
         .get();
     return snapshot.docs
         .map((doc) => BadgeModel.fromFirestore(doc.data(), doc.id))

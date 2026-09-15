@@ -64,9 +64,19 @@ class FormationViewModel extends StateNotifier<FormationState> {
   Future<void> loadCourses() async {
     state = state.copyWith(isLoading: true);
     try {
-      final courses = await _repository.fetchAll();
-      final progress = await _repository.fetchProgress(userId);
-      final badges = await _repository.fetchBadges(userId);
+      // J6.7 (CDC §7.1 · T10) — les 3 lectures sont indépendantes (aucune ne
+      // dépend du résultat d'une autre) : les paralléliser plutôt que les
+      // enchaîner en séquence réduit d'environ 3x le temps total passé en
+      // aller-retour réseau au premier rendu du tableau de bord, qui
+      // déclenche cette méthode dès la connexion.
+      final results = await Future.wait([
+        _repository.fetchAll(),
+        _repository.fetchProgress(userId),
+        _repository.fetchBadges(userId),
+      ]);
+      final courses = results[0] as List<CourseModel>;
+      final progress = results[1] as List<CourseProgress>;
+      final badges = results[2] as List<BadgeModel>;
       state = state.copyWith(
         courses: courses,
         progress: progress,

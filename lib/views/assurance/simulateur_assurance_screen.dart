@@ -176,7 +176,7 @@ class _InputCard extends StatelessWidget {
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
-              value: zone,
+              initialValue: zone,
               decoration: const InputDecoration(labelText: 'Zone géographique'),
               items: zones.map((z) => DropdownMenuItem(value: z, child: Text(z))).toList(),
               onChanged: onZone,
@@ -194,7 +194,7 @@ class _InputCard extends StatelessWidget {
             ],
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              value: typeAlea,
+              initialValue: typeAlea,
               decoration: const InputDecoration(labelText: 'Type de risque à couvrir'),
               items: typeList.map((t) => DropdownMenuItem(
                 value: t,

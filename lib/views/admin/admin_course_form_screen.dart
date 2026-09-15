@@ -121,7 +121,7 @@ class _AdminCourseFormScreenState extends ConsumerState<AdminCourseFormScreen> {
             // ── Type et niveau ───────────────────────────────────────────────
             _section('Type de contenu'),
             DropdownButtonFormField<CourseType>(
-              value: _type,
+              initialValue: _type,
               decoration: _decor('Type *'),
               items: CourseType.values.map((t) => DropdownMenuItem(
                 value: t,
@@ -131,7 +131,7 @@ class _AdminCourseFormScreenState extends ConsumerState<AdminCourseFormScreen> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<int>(
-              value: _niveau,
+              initialValue: _niveau,
               decoration: _decor('Niveau *'),
               items: const [
                 DropdownMenuItem(value: 0, child: Text('Débutant')),
