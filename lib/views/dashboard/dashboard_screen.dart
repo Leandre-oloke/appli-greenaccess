@@ -138,6 +138,7 @@ class _Header extends ConsumerWidget {
           clipBehavior: Clip.none,
           children: [
             IconButton(
+              tooltip: 'Notifications',
               onPressed: () => context.go(AppRoutes.notifications),
               icon:
                   const Icon(Icons.notifications_none_rounded, color: Colors.white),
@@ -166,6 +167,7 @@ class _Header extends ConsumerWidget {
           ],
         ),
         IconButton(
+          tooltip: 'Profil',
           onPressed: () => context.go(AppRoutes.profil),
           icon: const Icon(Icons.account_circle_outlined, color: Colors.white),
         ),

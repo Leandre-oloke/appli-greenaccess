@@ -333,6 +333,7 @@ class _PartenaireFormState extends ConsumerState<_PartenaireForm> {
                     ),
                   ),
                   IconButton(
+                    tooltip: 'Fermer',
                     icon: const Icon(Icons.close),
                     onPressed: () => Navigator.pop(context),
                   ),

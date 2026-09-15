@@ -470,9 +470,17 @@ class _Step4Impact extends StatelessWidget {
           children: [
             const Text('Emplois verts créés:', style: TextStyle(fontWeight: FontWeight.w500)),
             const SizedBox(width: 12),
-            IconButton(icon: const Icon(Icons.remove_circle_outline), onPressed: emplois > 0 ? () => onEmplois(emplois - 1) : null),
+            IconButton(
+              tooltip: 'Diminuer',
+              icon: const Icon(Icons.remove_circle_outline),
+              onPressed: emplois > 0 ? () => onEmplois(emplois - 1) : null,
+            ),
             Text('$emplois', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            IconButton(icon: const Icon(Icons.add_circle_outline), onPressed: () => onEmplois(emplois + 1)),
+            IconButton(
+              tooltip: 'Augmenter',
+              icon: const Icon(Icons.add_circle_outline),
+              onPressed: () => onEmplois(emplois + 1),
+            ),
           ],
         ),
         const SizedBox(height: 12),

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/assurance_model.dart';
 import '../../repositories/assurance_repository.dart';
+import '../../utils/error_mapper.dart';
 import '../../viewmodels/assurance_viewmodel.dart';
 
 /// Import/gestion admin des zones d'aléa climatique (J4.15, CDC §4.2) — permet
@@ -35,7 +36,10 @@ class _AdminZonesAleaScreenState extends ConsumerState<AdminZonesAleaScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur d\'import : $e'), backgroundColor: AppColors.error),
+          SnackBar(
+            content: Text(mapErrorToMessage(e, fallback: "Échec de l'import. Réessayez.")),
+            backgroundColor: AppColors.error,
+          ),
         );
       }
     } finally {
@@ -140,6 +144,7 @@ class _AdminZonesAleaScreenState extends ConsumerState<AdminZonesAleaScreen> {
                       'Rayon ${zone.rayon.toStringAsFixed(0)} km',
                     ),
                     trailing: IconButton(
+                      tooltip: 'Supprimer',
                       icon: const Icon(Icons.delete_outline, color: AppColors.error),
                       onPressed: () => _supprimer(zone),
                     ),
@@ -147,7 +152,9 @@ class _AdminZonesAleaScreenState extends ConsumerState<AdminZonesAleaScreen> {
                 },
               ),
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Erreur de chargement des zones : $e')),
+        error: (e, _) => Center(
+          child: Text(mapErrorToMessage(e, fallback: 'Impossible de charger les zones.')),
+        ),
       ),
     );
   }

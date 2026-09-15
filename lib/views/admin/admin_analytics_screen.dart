@@ -33,6 +33,7 @@ class _AdminAnalyticsScreenState extends ConsumerState<AdminAnalyticsScreen> {
         title: const Text('Analytics', style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
           IconButton(
+            tooltip: 'Actualiser',
             icon: const Icon(Icons.refresh),
             onPressed: () => ref.read(adminViewModelProvider.notifier).loadAnalytics(),
           ),

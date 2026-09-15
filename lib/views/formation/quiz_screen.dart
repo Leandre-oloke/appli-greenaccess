@@ -132,7 +132,10 @@ class _QuizScreenState extends ConsumerState<QuizScreen>
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: Text('Question ${_current + 1} / ${_questions.length}'),
-        leading: IconButton(icon: const Icon(Icons.close), onPressed: () => context.pop()),
+        leading: IconButton(
+            tooltip: 'Quitter le quiz',
+            icon: const Icon(Icons.close),
+            onPressed: () => context.pop()),
       ),
       body: Column(
         children: [

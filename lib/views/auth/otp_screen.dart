@@ -130,6 +130,7 @@ class _OTPScreenState extends ConsumerState<OTPScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     IconButton(
+                      tooltip: 'Retour',
                       onPressed: _back,
                       icon: const Icon(Icons.arrow_back_rounded,
                           color: Colors.white),

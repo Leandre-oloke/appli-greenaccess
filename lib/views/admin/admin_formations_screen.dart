@@ -47,6 +47,7 @@ class _AdminFormationsScreenState extends ConsumerState<AdminFormationsScreen> {
         foregroundColor: Colors.white,
         actions: [
           IconButton(
+            tooltip: 'Actualiser',
             icon: const Icon(Icons.refresh),
             onPressed: () => ref.read(adminViewModelProvider.notifier).loadCourses(),
           ),
@@ -164,8 +165,16 @@ class _CourseAdminCard extends StatelessWidget {
               color: AppColors.info,
               tooltip: 'Gérer les leçons',
             ),
-            IconButton(icon: const Icon(Icons.edit_outlined), onPressed: onEdit, color: AppColors.secondary),
-            IconButton(icon: const Icon(Icons.delete_outline), onPressed: onDelete, color: AppColors.error),
+            IconButton(
+                tooltip: 'Modifier',
+                icon: const Icon(Icons.edit_outlined),
+                onPressed: onEdit,
+                color: AppColors.secondary),
+            IconButton(
+                tooltip: 'Supprimer',
+                icon: const Icon(Icons.delete_outline),
+                onPressed: onDelete,
+                color: AppColors.error),
           ],
         ),
       ),

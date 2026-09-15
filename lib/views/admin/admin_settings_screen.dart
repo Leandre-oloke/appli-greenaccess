@@ -5,6 +5,7 @@ import '../../core/constants/app_colors.dart';
 import '../../models/notification_model.dart';
 import '../../repositories/notification_repository.dart';
 import '../../routes.dart';
+import '../../utils/error_mapper.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 
 class AdminSettingsScreen extends ConsumerWidget {
@@ -195,7 +196,10 @@ class AdminSettingsScreen extends ConsumerWidget {
       );
     } catch (e) {
       messenger.showSnackBar(
-        SnackBar(content: Text('Erreur : $e'), backgroundColor: AppColors.error),
+        SnackBar(
+          content: Text(mapErrorToMessage(e, fallback: "Échec de l'envoi. Réessayez.")),
+          backgroundColor: AppColors.error,
+        ),
       );
     } finally {
       titreCtrl.dispose();

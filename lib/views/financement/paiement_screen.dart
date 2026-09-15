@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/paiement_model.dart';
 import '../../repositories/paiement_repository.dart';
+import '../../utils/error_mapper.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 
 // ── Provider local ────────────────────────────────────────────────────────────
@@ -103,7 +104,10 @@ class _PaiementScreenState extends ConsumerState<PaiementScreen> {
       setState(() => _loading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur : $e'), backgroundColor: AppColors.error),
+          SnackBar(
+            content: Text(mapErrorToMessage(e, fallback: 'Échec du paiement. Réessayez.')),
+            backgroundColor: AppColors.error,
+          ),
         );
       }
     }
@@ -137,7 +141,11 @@ class _PaiementScreenState extends ConsumerState<PaiementScreen> {
       setState(() => _loading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur confirmation : $e'), backgroundColor: AppColors.error),
+          SnackBar(
+            content:
+                Text(mapErrorToMessage(e, fallback: 'Échec de la confirmation. Réessayez.')),
+            backgroundColor: AppColors.error,
+          ),
         );
       }
     }

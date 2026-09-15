@@ -1297,6 +1297,28 @@ existant a donc pu être instrumenté sans casser un seul test déjà vert.
 > restitue. 4 `IconButton` sans tooltip corrigés (modifier le profil, 3 bascules
 > afficher/masquer mot de passe). Aucun nouveau test (changements additifs) ; les 4 tests
 > existants de l'écran toujours au vert. `flutter analyze` propre, 246 tests au vert.
+>
+> **Étape 10 — États loading/error/empty : passe transversale.** Balayage de tout `lib/views/`
+> (39 `IconButton`, 45 littéraux de couleur, erreurs affichées brutes — les 3 chiffres de
+> l'audit initial) pour fermer les manques que les étapes précédentes n'avaient traités que
+> module par module. Erreurs techniques brutes (`SnackBar(content: Text('Erreur : $e'))` ou
+> équivalent) trouvées et corrigées via `mapErrorToMessage` (avec un `fallback` contextuel
+> quand un message générique aurait perdu une information utile, comme à l'étape 9) dans 4
+> écrans supplémentaires hors du périmètre des étapes 4-9 : `admin_zones_alea_screen.dart`
+> (import de zones, chargement des zones), `admin_settings_screen.dart` (envoi de
+> notification), `paiement_screen.dart` (initiation et confirmation de paiement Mobile
+> Money). Tooltips manquants corrigés sur 16 `IconButton` supplémentaires, répartis sur
+> `dashboard_screen.dart` (notifications, profil — l'en-tête du Dashboard n'avait reçu qu'un
+> tooltip sur 3 lors de sa propre étape), `otp_screen.dart`, `demande_form_screen.dart`,
+> `messagerie_partenaire_screen.dart`, `quiz_screen.dart`, et 8 écrans admin (retour,
+> actualiser, modifier, supprimer, ajouter, fermer). Littéraux de couleur : **non repris** —
+> le seul groupe substantiel trouvé (le violet `0xFF6A1B9A` du module Assurance, étape 7) est
+> un accent de marque intentionnel, pas un oubli ; aucun autre littéral significatif détecté
+> lors du balayage. Tous les changements de cette étape sont additifs (paramètre `tooltip` ou
+> substitution d'un `Text` d'erreur) ; aucun nouveau test — la vérification s'appuie sur les
+> 246 tests existants (aucune régression) et sur le fait qu'ajouter un `tooltip` ou traduire
+> un message d'erreur ne peut pas casser un test qui ne les asserte pas déjà. `flutter
+> analyze` propre.
 
 **Fait**
 

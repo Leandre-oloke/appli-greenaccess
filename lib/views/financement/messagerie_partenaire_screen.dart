@@ -139,6 +139,7 @@ class _MessageriePartenaireScreenState extends ConsumerState<MessageriePartenair
                           ),
                         )
                       : IconButton(
+                          tooltip: 'Envoyer',
                           icon: const Icon(Icons.send, color: AppColors.primary),
                           onPressed: _envoyer,
                         ),
